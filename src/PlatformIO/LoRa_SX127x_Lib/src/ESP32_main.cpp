@@ -6,12 +6,19 @@
 #include "FHSS.h"
 #include "LED.h"
 #include "Debug.h"
+#include "LowPassFilter.h"
 
 String DebugOutput;
 
 /// define some libs to use ///
 SX127xDriver Radio;
 CRSF crsf;
+
+////////////////// Filters ///////////////////////
+LPF fltr_downlink_SNR;
+LPF fltr_downlink_RSSI;
+LPF fltr_downlink_Link_quality;
+///////////////////////////////////////////////////
 
 //// Switch Data Handling ///////
 uint8_t SwitchPacketsCounter = 0;               //not used for the moment
@@ -69,7 +76,7 @@ void ICACHE_RAM_ATTR ProcessTLMpacket()
   uint8_t packetAddr = (Radio.RXdataBuffer[0] & 0b11111100) >> 2;
   uint8_t TLMheader = Radio.RXdataBuffer[1];
 
-  Serial.println("TLMpacket");
+  //Serial.println("TLMpacket");
 
   if (packetAddr == DeviceAddr)
   {
@@ -83,15 +90,16 @@ void ICACHE_RAM_ATTR ProcessTLMpacket()
 
         if (TLMheader == CRSF_FRAMETYPE_LINK_STATISTICS)
         {
+          // Values are passed through the filter banks for more stable readings
+
           crsf.LinkStatistics.uplink_RSSI_1 = Radio.RXdataBuffer[2];
-          crsf.LinkStatistics.uplink_RSSI_2 = 0;
           crsf.LinkStatistics.uplink_SNR = Radio.RXdataBuffer[4];
           crsf.LinkStatistics.uplink_Link_quality = Radio.RXdataBuffer[5];
 
-          crsf.LinkStatistics.downlink_SNR = int(Radio.LastPacketSNR * 10);
-          crsf.LinkStatistics.downlink_RSSI = 120 + Radio.LastPacketRSSI;
-          //crsf.LinkStatistics.downlink_Link_quality = linkQuality;
-          crsf.LinkStatistics.downlink_Link_quality = Radio.currPWR;
+          crsf.LinkStatistics.downlink_SNR = fltr_downlink_SNR.update(int(Radio.LastPacketSNR * 10));
+          crsf.LinkStatistics.downlink_RSSI = fltr_downlink_RSSI.update(120 + Radio.LastPacketRSSI);
+          crsf.LinkStatistics.downlink_Link_quality = fltr_downlink_Link_quality.update(linkQuality);
+
           crsf.sendLinkStatisticsToTX();
         }
       }
@@ -282,7 +290,6 @@ void ICACHE_RAM_ATTR ParamUpdateReq()
 
 void ICACHE_RAM_ATTR HandleUpdateParameter()
 {
-  
 
   if (UpdateParamReq == true)
   {
@@ -476,7 +483,7 @@ void setup()
 
 #ifdef Regulatory_Domain_AU_915
   Serial.println("Setting 915MHz Mode");
-  Radio.RFmodule = RFMOD_SX1276;        //define radio module here
+  Radio.RFmodule = RFMOD_SX1276; //define radio module here
   // Radio.SetOutputPower(0b0000); // 15dbm = 32mW
   // Radio.SetOutputPower(0b0001); // 18dbm = 40mW
   // Radio.SetOutputPower(0b0101); // 20dbm = 100mW
@@ -485,7 +492,7 @@ void setup()
   // Radio.SetOutputPower(0b1111); // 30dbm = 1000mW
 #elif defined Regulatory_Domain_AU_433
   Serial.println("Setting 433MHz Mode");
-  Radio.RFmodule = RFMOD_SX1278;        //define radio module here
+  Radio.RFmodule = RFMOD_SX1278; //define radio module here
   Radio.SetOutputPower(0b1111);
 #endif
 
@@ -508,6 +515,9 @@ void setup()
   crsf.RecvParameterUpdate = &ParamUpdateReq;
 
   Radio.Begin();
+
+  Serial.println(MeasureNoiseFloor());
+
   SetRFLinkRate(RF_RATE_200HZ);
   crsf.Begin();
 }

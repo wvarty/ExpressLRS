@@ -201,6 +201,7 @@ public:
 
     static int8_t ICACHE_RAM_ATTR GetLastPacketRSSI();
     static int8_t ICACHE_RAM_ATTR GetLastPacketSNR();
+    static int8_t ICACHE_RAM_ATTR GetCurrRSSI();
 
     ////////////Non-blocking TX related Functions/////////////////
     static void nullCallback(void);

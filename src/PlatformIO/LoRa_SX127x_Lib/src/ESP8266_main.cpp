@@ -6,9 +6,22 @@
 #include "ESP8266_WebUpdate.h"
 #include "FHSS.h"
 #include "Debug.h"
+#include "LowPassFilter.h"
+#include "ESP8266_HWtimer.h"
 
 SX127xDriver Radio;
 CRSF crsf(Serial); //pass a serial port object to the class for it to use
+
+HWtimer HWtimer;
+
+////////////////// Filters ///////////////////////
+LPF fltr_uplink_RSSI_1;
+LPF fltr_uplink_RSSI_2;
+LPF fltr_uplink_SNR;
+LPF fltr_uplink_Link_quality;
+
+LPF fltr_HWtimer;
+///////////////////////////////////////////////////
 
 ///forward defs///
 void SetRFLinkRate(expresslrs_mod_settings_s mode);
@@ -17,15 +30,15 @@ void OStimerSetCallback(void (*CallbackFunc)(void));
 void OStimerReset();
 void OStimerUpdateInterval(uint32_t Interval);
 
-void InitHarwareTimer();
-void StopHWtimer();
-void HWtimerSetCallback(void (*CallbackFunc)(void));
-void HWtimerSetCallback90(void (*CallbackFunc)(void));
-void HWtimerUpdateInterval(uint32_t Interval);
-uint32_t ICACHE_RAM_ATTR HWtimerGetlastCallbackMicros();
-uint32_t ICACHE_RAM_ATTR HWtimerGetlastCallbackMicros90();
-void ICACHE_RAM_ATTR HWtimerPhaseShift(int16_t Offset);
-uint32_t ICACHE_RAM_ATTR HWtimerGetIntervalMicros();
+// void InitHarwareTimer();
+// void StopHWtimer();
+// void HWtimerSetCallback(void (*CallbackFunc)(void));
+// void HWtimerSetCallback90(void (*CallbackFunc)(void));
+// void HWtimerUpdateInterval(uint32_t Interval);
+// uint32_t ICACHE_RAM_ATTR HWtimerGetlastCallbackMicros();
+// uint32_t ICACHE_RAM_ATTR HWtimerGetlastCallbackMicros90();
+// void ICACHE_RAM_ATTR HWtimerPhaseShift(int16_t Offset);
+// uint32_t ICACHE_RAM_ATTR HWtimerGetIntervalMicros();
 
 uint8_t scanIndex = 1;
 
@@ -38,8 +51,6 @@ int32_t HWtimerError;
 int32_t HWtimerError90;
 int16_t Offset;
 int16_t Offset90;
-
-uint8_t testdata[7] = {1, 2, 3, 4, 5, 6, 7};
 
 bool LED = false;
 
@@ -89,22 +100,19 @@ void ICACHE_RAM_ATTR getRFlinkInfo()
 {
     int8_t LastRSSI = Radio.GetLastPacketRSSI();
 
-    crsf.PackedRCdataOut.ch15 = UINT10_to_CRSF(map(LastRSSI, -100, -50, 0, 1023));
-    crsf.PackedRCdataOut.ch14 = UINT10_to_CRSF(fmap(linkQuality, 0, 100, 0, 1023));
+    crsf.LinkStatistics.uplink_RSSI_1 = fltr_uplink_RSSI_1.update(120 + Radio.GetLastPacketRSSI());
+    crsf.LinkStatistics.uplink_SNR = fltr_uplink_SNR.update(Radio.GetLastPacketSNR() * 10);
+    crsf.LinkStatistics.uplink_Link_quality = fltr_uplink_Link_quality.update(linkQuality);
 
-    crsf.LinkStatistics.uplink_RSSI_1 = 120 + Radio.GetLastPacketRSSI();
-    crsf.LinkStatistics.uplink_RSSI_2 = 0;
-    crsf.LinkStatistics.uplink_SNR = Radio.GetLastPacketSNR() * 10;
-    crsf.LinkStatistics.uplink_Link_quality = linkQuality;
+    crsf.PackedRCdataOut.ch15 = UINT10_to_CRSF(map(LastRSSI, -100, -50, 0, 1023)); //use these channels as a means of old school rssi injection
+    crsf.PackedRCdataOut.ch14 = UINT10_to_CRSF(fmap(linkQuality, 0, 100, 0, 1023));
 
     crsf.sendLinkStatisticsToFC();
 }
 
-int offset = 0;
-
 void ICACHE_RAM_ATTR HandleFHSS()
 {
-    uint8_t modresult = (NonceRXlocal - offset) % ExpressLRS_currAirRate.FHSShopInterval;
+    uint8_t modresult = (NonceRXlocal) % ExpressLRS_currAirRate.FHSShopInterval;
 
     if (modresult == 0)
     {
@@ -120,7 +128,7 @@ void ICACHE_RAM_ATTR HandleSendTelemetryResponse()
 {
     if (ExpressLRS_currAirRate.TLMinterval > 0)
     {
-        uint8_t modresult = (NonceRXlocal - offset) % ExpressLRS_currAirRate.TLMinterval;
+        uint8_t modresult = (NonceRXlocal) % ExpressLRS_currAirRate.TLMinterval;
 
         if (modresult == 0)
         {
@@ -144,6 +152,19 @@ void ICACHE_RAM_ATTR HandleSendTelemetryResponse()
 // 11 -> tlm packet
 // 10 -> sync packet with hop data
 
+void ICACHE_RAM_ATTR TimerCallback()
+{
+    NonceRXlocal++;
+    HandleFHSS();
+    HandleSendTelemetryResponse();
+}
+
+void ICACHE_RAM_ATTR TimerCallback_180()
+{
+    //MeasuredHWtimerInterval = micros() - HWtimerGetlastCallbackMicros();
+    MeasuredHWtimerInterval = micros() - HWtimer.LastCallbackMicros;
+}
+
 void ICACHE_RAM_ATTR Test90()
 {
     NonceRXlocal++;
@@ -153,7 +174,8 @@ void ICACHE_RAM_ATTR Test90()
 
 void ICACHE_RAM_ATTR Test()
 {
-    MeasuredHWtimerInterval = micros() - HWtimerGetlastCallbackMicros();
+    //MeasuredHWtimerInterval = micros() - HWtimerGetlastCallbackMicros();
+    MeasuredHWtimerInterval = micros() - HWtimer.LastCallbackMicros;
 }
 
 ///////////Super Simple Lowpass for 'PLL' (not really a PLL)/////////
@@ -181,7 +203,8 @@ void ICACHE_RAM_ATTR GotConnection()
 {
     if (LostConnection)
     {
-        InitHarwareTimer();
+        //InitHarwareTimer();
+        HWtimer.Init();
         LostConnection = false; //we got a packet, therefore no lost connection
         Serial.println("got conn");
     }
@@ -229,13 +252,19 @@ void ICACHE_RAM_ATTR ProcessRFPacket()
 
             LastValidPacket = millis();
 
-            HWtimerError = micros() - HWtimerGetlastCallbackMicros();
+            // HWtimerError = micros() - HWtimerGetlastCallbackMicros();
 
-            HWtimerError90 = micros() - HWtimerGetlastCallbackMicros90();
+            // HWtimerError90 = micros() - HWtimerGetlastCallbackMicros90();
 
-            uint32_t HWtimerInterval = HWtimerGetIntervalMicros();
-            Offset = SimpleLowPass(HWtimerError - (ExpressLRS_currAirRate.interval / 2) + 300); //crude 'locking function' to lock hardware timer to transmitter, seems to work well enough
-            HWtimerPhaseShift(Offset / 2);
+            // //uint32_t HWtimerInterval = HWtimerGetIntervalMicros(); // not used? delete?
+
+            // Offset = SimpleLowPass(HWtimerError - (ExpressLRS_currAirRate.interval / 2) + 300); //crude 'locking function' to lock hardware timer to transmitter, seems to work well enough
+            // HWtimerPhaseShift(Offset / 2);
+
+            HWtimerError = micros() - HWtimer.LastCallbackMicros;
+            HWtimerError90 = micros() - HWtimer.LastCallbackMicros_180;
+            Offset = fltr_HWtimer.update(HWtimerError - (ExpressLRS_currAirRate.interval / 2) + 300);
+            HWtimer.UpdatePhaseShift(Offset / 2);
 
             if (type == 0b00) //std 4 channel switch data
             {
@@ -314,7 +343,8 @@ void ICACHE_RAM_ATTR ProcessRFPacket()
 void beginWebsever()
 {
     Radio.StopContRX();
-    StopHWtimer();
+    HWtimer.Stop();
+    //StopHWtimer();
 
     BeginWebUpdate();
     webUpdateMode = true;
@@ -360,7 +390,8 @@ void ICACHE_RAM_ATTR SetRFLinkRate(expresslrs_mod_settings_s mode) // Set speed 
     Radio.StopContRX();
     Radio.Config(mode.bw, mode.sf, mode.cr, Radio.currFreq, Radio._syncWord);
     ExpressLRS_currAirRate = mode;
-    HWtimerUpdateInterval(mode.interval);
+    //HWtimerUpdateInterval(mode.interval);
+    HWtimer.UpdateInterval(mode.interval);
     Radio.RXnb();
 }
 
@@ -384,16 +415,15 @@ void setup()
 
 #ifdef Regulatory_Domain_AU_915
     Serial.println("Setting 915MHz Mode");
-    Radio.RFmodule = RFMOD_SX1276;        //define radio module here
+    Radio.RFmodule = RFMOD_SX1276; //define radio module here
 #elif defined Regulatory_Domain_AU_433
     Serial.println("Setting 433MHz Mode");
-    Radio.RFmodule = RFMOD_SX1278;        //define radio module here
+    Radio.RFmodule = RFMOD_SX1278; //define radio module here
 #endif
 
     Radio.SetFrequency(GetInitialFreq()); //set frequency first or an error will occur!!!
 
     Radio.Begin();
-
 
     crsf.InitSerial();
 
@@ -405,8 +435,15 @@ void setup()
 
     crsf.Begin();
 
-    HWtimerSetCallback(&Test);
-    HWtimerSetCallback90(&Test90);
+    //HWtimerSetCallback(&Test);
+    //HWtimerSetCallback90(&Test90);
+
+    //HWtimer.CallBack = &Test;
+    //HWtimer.CallBack_180 = &Test90;
+
+    HWtimer.CallBack = &TimerCallback;
+    HWtimer.CallBack_180 = &TimerCallback_180;
+
     SetRFLinkRate(RF_RATE_200HZ);
 }
 
@@ -416,7 +453,8 @@ void loop()
     if (LostConnection && !webUpdateMode)
 
     {
-        StopHWtimer();
+        //StopHWtimer();
+        HWtimer.Stop();
         Radio.SetFrequency(GetInitialFreq());
         switch (scanIndex)
         {
@@ -483,7 +521,8 @@ void loop()
         PacketRateLastChecked = millis();
         PacketRate = (float)packetCounter / (float)(PacketRateInterval);
         linkQuality = int(((float)PacketRate / (float)targetFrameRate) * 100000.0);
-        if(linkQuality > 99) linkQuality = 99;
+        if (linkQuality > 99)
+            linkQuality = 99;
 
         CRCerrorRate = (((float)CRCerrorCounter / (float)(PacketRateInterval)) * 100);
 

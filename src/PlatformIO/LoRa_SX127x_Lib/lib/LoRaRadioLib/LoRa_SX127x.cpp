@@ -927,6 +927,11 @@ int8_t ICACHE_RAM_ATTR SX127xDriver::GetLastPacketRSSI()
   return (-157 + getRegValue(SX127X_REG_PKT_RSSI_VALUE));
 }
 
+int8_t ICACHE_RAM_ATTR SX127xDriver::GetCurrRSSI()
+{
+  return (-157 + getRegValue(SX127X_REG_RSSI_VALUE));
+}
+
 int8_t ICACHE_RAM_ATTR SX127xDriver::GetLastPacketSNR()
 {
   int8_t rawSNR = (int8_t)getRegValue(SX127X_REG_PKT_SNR_VALUE);

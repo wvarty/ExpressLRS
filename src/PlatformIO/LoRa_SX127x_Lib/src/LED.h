@@ -1,3 +1,4 @@
+#pragma once
 /// LED SUPPORT ///////
 #include <NeoPixelBus.h>
 const uint16_t PixelCount = 4; // this example assumes 4 pixels, making it smaller will cause a failure

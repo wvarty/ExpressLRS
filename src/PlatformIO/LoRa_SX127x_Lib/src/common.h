@@ -1,12 +1,24 @@
-#include "LoRa_SX127x.h"
+#pragma once
+
+#include "FHSS.h"
+#include "LoRaRadioLib.h"
+#include <Arduino.h>
 
 // define frequnecy band of operation
 #define Regulatory_Domain_AU_915
 // #define Regulatory_Domain_AU_433
 
-uint8_t TxBaseMac[6] = {48, 174, 164, 200, 100, 50};
+#ifdef Regulatory_Domain_AU_915
+#define NUMHOPFREQS 20
 
-uint8_t DeviceAddr = TxBaseMac[5] & 0b111111; // temporarily based on mac until listen before assigning method merged
+#elif defined Regulatory_Domain_AU_433
+#define NUMHOPFREQS 3
+
+#endif
+
+extern uint8_t TxBaseMac[6];
+
+extern uint8_t DeviceAddr;
 
 typedef enum
 {
@@ -38,20 +50,18 @@ typedef struct expresslrs_mod_settings_s
 
 } expresslrs_mod_settings_t;
 
-expresslrs_mod_settings_s RF_RATE_200HZ = {BW_500_00_KHZ, SF_6, CR_4_5, 5000, 200, 64, 8, 8, RATE_200HZ};
-expresslrs_mod_settings_s RF_RATE_100HZ = {BW_500_00_KHZ, SF_7, CR_4_7, 10000, 100, 32, 4, 10, RATE_100HZ};
-expresslrs_mod_settings_s RF_RATE_50HZ = {BW_500_00_KHZ, SF_8, CR_4_7, 20000, 50, 16, 2, 10, RATE_50HZ};
-expresslrs_mod_settings_s RF_RATE_25HZ = {BW_250_00_KHZ, SF_8, CR_4_7, 40000, 25, 0, 2, 8, RATE_25HZ};
-expresslrs_mod_settings_s RF_RATE_4HZ = {BW_250_00_KHZ, SF_11, CR_4_5, 250000, 4, 0, 2, 8, RATE_4HZ};
+extern expresslrs_mod_settings_s RF_RATE_200HZ;
+extern expresslrs_mod_settings_s RF_RATE_100HZ;
+extern expresslrs_mod_settings_s RF_RATE_50HZ;
+extern expresslrs_mod_settings_s RF_RATE_25HZ;
+extern expresslrs_mod_settings_s RF_RATE_4HZ;
 
-const expresslrs_mod_settings_s ExpressLRS_AirRateConfig[5] = {RF_RATE_200HZ, RF_RATE_100HZ, RF_RATE_50HZ, RF_RATE_25HZ, RF_RATE_4HZ};
-
-expresslrs_mod_settings_s ExpressLRS_currAirRate;
-expresslrs_mod_settings_s ExpressLRS_prevAirRate;
+extern expresslrs_mod_settings_s ExpressLRS_currAirRate;
+extern expresslrs_mod_settings_s ExpressLRS_prevAirRate;
 
 #define MaxPower100mW_Module 20
 #define MaxPower1000mW_Module 30
 #define RF_Gain 10
 
-int8_t ExpressLRS_currPower = 0;
-int8_t ExpressLRS_prevPower = 0;
+int16_t MeasureNoiseFloor();
+int16_t MeasureRSSI(int FHSSindex);
