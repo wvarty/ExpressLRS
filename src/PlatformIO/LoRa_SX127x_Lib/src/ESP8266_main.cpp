@@ -86,14 +86,32 @@ bool gotFHSSsync = false;
 uint32_t LastValidPacket = 0; //Time the last valid packet was recv
 ///////////////////////////////////////////////////////////////
 
-void ICACHE_RAM_ATTR GenerateSyncPacketData()
+uint8_t SYN_ACK_STATE = 0;
+uint8_t SYNACK_PKTtoXFER[8] = {0};
+uint8_t SYN_ACK_ATTEMPTS = 0;
+
+void ICACHE_RAM_ATTR HandleSYNACK()
 {
-    uint8_t PacketHeaderAddr;
-    PacketHeaderAddr = (DeviceAddr << 2) + 0b10;
-    Radio.TXdataBuffer[0] = PacketHeaderAddr;
-    Radio.TXdataBuffer[1] = FHSSgetCurrIndex();
-    Radio.TXdataBuffer[2] = NonceRXlocal;
-    Radio.TXdataBuffer[3] = ExpressLRS_currAirRate.enum_rate;
+    switch (SYN_ACK_STATE)
+    {
+    case 0:
+        //start SYNACK process
+        break;
+    case 1:
+        break;
+    case 2:
+        break;
+    default;
+        break;
+    }
+}
+
+void ICACHE_RAM_ATTR SYNACKdone()
+{
+}
+
+void ICACHE_RAM_ATTR SYNACKfailed()
+{
 }
 
 void ICACHE_RAM_ATTR getRFlinkInfo()
@@ -128,7 +146,7 @@ void ICACHE_RAM_ATTR HandleSendTelemetryResponse()
 {
     if (ExpressLRS_currAirRate.TLMinterval > 0)
     {
-        uint8_t modresult = (NonceRXlocal) % ExpressLRS_currAirRate.TLMinterval;
+        uint8_t modresult = (NonceRXlocal) % TLMratioEnumToValue(ExpressLRS_currAirRate.TLMinterval);
 
         if (modresult == 0)
         {
@@ -178,26 +196,26 @@ void ICACHE_RAM_ATTR Test()
     MeasuredHWtimerInterval = micros() - HWtimer.LastCallbackMicros;
 }
 
-///////////Super Simple Lowpass for 'PLL' (not really a PLL)/////////
-int RawData;
-int32_t SmoothDataINT;
-int32_t SmoothDataFP;
-int Beta = 3;     // Length = 16
-int FP_Shift = 3; //Number of fractional bits
+// ///////////Super Simple Lowpass for 'PLL' (not really a PLL)/////////
+// int RawData;
+// int32_t SmoothDataINT;
+// int32_t SmoothDataFP;
+// int Beta = 3;     // Length = 16
+// int FP_Shift = 3; //Number of fractional bits
 
-int16_t ICACHE_RAM_ATTR SimpleLowPass(int16_t Indata)
-{
-    RawData = Indata;
-    RawData <<= FP_Shift; // Shift to fixed point
-    SmoothDataFP = (SmoothDataFP << Beta) - SmoothDataFP;
-    SmoothDataFP += RawData;
-    SmoothDataFP >>= Beta;
-    // Don't do the following shift if you want to do further
-    // calculations in fixed-point using SmoothData
-    SmoothDataINT = SmoothDataFP >> FP_Shift;
-    return SmoothDataINT;
-}
-//////////////////////////////////////////////////////////////////////
+// int16_t ICACHE_RAM_ATTR SimpleLowPass(int16_t Indata)
+// {
+//     RawData = Indata;
+//     RawData <<= FP_Shift; // Shift to fixed point
+//     SmoothDataFP = (SmoothDataFP << Beta) - SmoothDataFP;
+//     SmoothDataFP += RawData;
+//     SmoothDataFP >>= Beta;
+//     // Don't do the following shift if you want to do further
+//     // calculations in fixed-point using SmoothData
+//     SmoothDataINT = SmoothDataFP >> FP_Shift;
+//     return SmoothDataINT;
+// }
+// //////////////////////////////////////////////////////////////////////
 
 void ICACHE_RAM_ATTR GotConnection()
 {
@@ -286,7 +304,7 @@ void ICACHE_RAM_ATTR ProcessRFPacket()
             }
 
             if (type == 0b11)
-            { //telemetry packet from master
+            { //control packet from master with ack/syn
                 // not implimented yet
             }
 

@@ -22,8 +22,21 @@ extern uint8_t DeviceAddr;
 
 typedef enum
 {
-    RF_DOWNLINK_INFO,
-    RF_UPLINK_INFO
+    TLM_RATIO_NO_TLM = 0,
+    TLM_RATIO_1_2 = 1,
+    TLM_RATIO_1_4 = 2,
+    TLM_RATIO_1_8 = 3,
+    TLM_RATIO_1_16 = 4,
+    TLM_RATIO_1_32 = 5,
+    TLM_RATIO_1_64 = 6,
+    TLM_RATIO_1_128 = 7
+} expresslrs_tlm_ratio_e;
+
+typedef enum
+{
+    RF_DOWNLINK_INFO = 0,
+    RF_UPLINK_INFO = 1,
+    RF_AIRMODE_PARAMETERS = 2
 } expresslrs_tlm_header_e;
 
 typedef enum
@@ -41,10 +54,10 @@ typedef struct expresslrs_mod_settings_s
     Bandwidth bw;
     SpreadingFactor sf;
     CodingRate cr;
-    uint32_t interval;       //interval in us seconds that corresponds to that frequnecy
-    uint8_t rate;            // rate in hz
-    uint8_t TLMinterval;     // every X packets is a response TLM packet, should be a power of 2
-    uint8_t FHSShopInterval; // every X packets we hope to a new frequnecy. Max value of 16 since only 4 bits have been assigned in the sync package.
+    uint32_t interval;                  //interval in us seconds that corresponds to that frequnecy
+    uint8_t rate;                       // rate in hz
+    expresslrs_tlm_ratio_e TLMinterval; // every X packets is a response TLM packet, should be a power of 2
+    uint8_t FHSShopInterval;            // every X packets we hope to a new frequnecy. Max value of 16 since only 4 bits have been assigned in the sync package.
     uint8_t PreambleLen;
     expresslrs_RFrates_e enum_rate; // Max value of 16 since only 4 bits have been assigned in the sync package.
 
@@ -56,6 +69,7 @@ extern expresslrs_mod_settings_s RF_RATE_50HZ;
 extern expresslrs_mod_settings_s RF_RATE_25HZ;
 extern expresslrs_mod_settings_s RF_RATE_4HZ;
 
+extern expresslrs_mod_settings_s ExpressLRS_nextAirRate;
 extern expresslrs_mod_settings_s ExpressLRS_currAirRate;
 extern expresslrs_mod_settings_s ExpressLRS_prevAirRate;
 
@@ -65,3 +79,4 @@ extern expresslrs_mod_settings_s ExpressLRS_prevAirRate;
 
 int16_t MeasureNoiseFloor();
 int16_t MeasureRSSI(int FHSSindex);
+uint8_t TLMratioEnumToValue(expresslrs_tlm_ratio_e enumval);

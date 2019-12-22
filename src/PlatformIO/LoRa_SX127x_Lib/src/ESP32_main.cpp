@@ -38,6 +38,7 @@ uint32_t PacketRateLastChecked = 0;
 uint32_t PacketRateInterval = 500;
 float PacketRate = 0.0;
 uint8_t linkQuality = 0;
+int RSSInoiseFloor = 0;
 ///////////////////////////////////////
 
 bool UpdateParamReq = false;
@@ -66,6 +67,33 @@ void ICACHE_RAM_ATTR IncreasePower();
 void ICACHE_RAM_ATTR DecreasePower();
 
 uint8_t baseMac[6];
+
+uint8_t SYN_ACK_STATE = 0;
+uint8_t SYNACK_PKTtoXFER[8] = {0};
+uint8_t SYN_ACK_ATTEMPTS = 0;
+
+void ICACHE_RAM_ATTR HandleSYNACK()
+{
+  switch (SYN_ACK_STATE)
+  {
+  case 0:
+    break;
+  case 1:
+    break;
+  case 2:
+    break;
+  default;
+    break;
+  }
+}
+
+void ICACHE_RAM_ATTR SYNACKdone()
+{
+}
+
+void ICACHE_RAM_ATTR SYNACKfailed()
+{
+}
 
 void ICACHE_RAM_ATTR ProcessTLMpacket()
 {
@@ -129,6 +157,19 @@ void ICACHE_RAM_ATTR CheckChannels5to8Change()
       }
     }
   }
+}
+
+void ICACHE_RAM_ATTR GenerateControlPacketData()
+{
+  uint8_t PacketHeaderAddr;
+  PacketHeaderAddr = (DeviceAddr << 2) + 0b11;
+  Radio.TXdataBuffer[0] = PacketHeaderAddr;
+  Radio.TXdataBuffer[1] = RF_AIRMODE_PARAMETERS;
+  Radio.TXdataBuffer[2] = ExpressLRS_nextAirRate.TLMinterval + (ExpressLRS_nextAirRate.enum_rate << 4);
+  //Radio.TXdataBuffer[3] =
+  //Radio.TXdataBuffer[4] =
+  //Radio.TXdataBuffer[5] =
+  //Radio.TXdataBuffer[6] =
 }
 
 void ICACHE_RAM_ATTR GenerateSyncPacketData()
@@ -208,7 +249,7 @@ void ICACHE_RAM_ATTR HandleTLM()
 {
   if (ExpressLRS_currAirRate.TLMinterval > 0)
   {
-    uint8_t modresult = (Radio.NonceTX) % ExpressLRS_currAirRate.TLMinterval;
+    uint8_t modresult = (Radio.NonceTX) % TLMratioEnumToValue(ExpressLRS_currAirRate.TLMinterval);
 
     if (modresult == 0) // wait for tlm response because it's time
     {
@@ -487,9 +528,9 @@ void setup()
   // Radio.SetOutputPower(0b0000); // 15dbm = 32mW
   // Radio.SetOutputPower(0b0001); // 18dbm = 40mW
   // Radio.SetOutputPower(0b0101); // 20dbm = 100mW
-  Radio.SetOutputPower(0b1000); // 23dbm = 200mW
-  // Radio.SetOutputPower(0b1100); // 27dbm = 500mW
-  // Radio.SetOutputPower(0b1111); // 30dbm = 1000mW
+  Radio.SetOutputPower(0b1111); // 23dbm = 200mW
+                                // Radio.SetOutputPower(0b1100); // 27dbm = 500mW
+                                // Radio.SetOutputPower(0b1111); // 30dbm = 1000mW
 #elif defined Regulatory_Domain_AU_433
   Serial.println("Setting 433MHz Mode");
   Radio.RFmodule = RFMOD_SX1278; //define radio module here
@@ -516,10 +557,13 @@ void setup()
 
   Radio.Begin();
 
-  Serial.println(MeasureNoiseFloor());
+  RSSInoiseFloor = MeasureNoiseFloor();
 
-  SetRFLinkRate(RF_RATE_200HZ);
+  //
   crsf.Begin();
+  SetRFLinkRate(RF_RATE_200HZ);
+  Serial.print("RF noise floor: ");
+  Serial.println(RSSInoiseFloor);
 }
 
 void loop()
