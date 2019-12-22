@@ -101,7 +101,7 @@ void ICACHE_RAM_ATTR HandleSYNACK()
         break;
     case 2:
         break;
-    default;
+    default:
         break;
     }
 }

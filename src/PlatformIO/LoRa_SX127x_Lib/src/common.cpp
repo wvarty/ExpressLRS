@@ -67,9 +67,6 @@ uint8_t TLMratioEnumToValue(expresslrs_tlm_ratio_e enumval)
     case TLM_RATIO_1_128:
         return 128;
         break;
-    case TLM_RATIO_1_256:
-        return 256;
-        break;
     default:
         break;
     }
