@@ -2,10 +2,6 @@
 
 extern SX127xDriver Radio;
 
-uint8_t TxBaseMac[6] = {48, 174, 164, 200, 100, 50};
-
-uint8_t DeviceAddr = TxBaseMac[5] & 0b111111; // temporarily based on mac until listen before assigning method merged
-
 expresslrs_mod_settings_s RF_RATE_200HZ = {BW_500_00_KHZ, SF_6, CR_4_5, 5000, 200, TLM_RATIO_1_64, 8, 8, RATE_200HZ};
 expresslrs_mod_settings_s RF_RATE_100HZ = {BW_500_00_KHZ, SF_7, CR_4_7, 10000, 100, TLM_RATIO_1_32, 4, 10, RATE_100HZ};
 expresslrs_mod_settings_s RF_RATE_50HZ = {BW_500_00_KHZ, SF_8, CR_4_7, 20000, 50, TLM_RATIO_1_16, 2, 10, RATE_50HZ};
@@ -15,6 +11,12 @@ expresslrs_mod_settings_s RF_RATE_4HZ = {BW_250_00_KHZ, SF_11, CR_4_5, 250000, 4
 expresslrs_mod_settings_s ExpressLRS_nextAirRate;
 expresslrs_mod_settings_s ExpressLRS_currAirRate;
 expresslrs_mod_settings_s ExpressLRS_prevAirRate;
+
+extern uint8_t TxBaseMac[6] = {48, 174, 164, 200, 100, 50};
+
+extern uint8_t CRCCaesarCipher = TxBaseMac[4];
+
+extern uint8_t DeviceAddr = TxBaseMac[5] & 0b111111; // temporarily based on mac until listen before assigning method merged
 
 #define RSSI_FLOOR_NUM_READS 5 // number of times to sweep the noise foor to get avg. RSSI reading
 #define MEDIAN_SIZE 20

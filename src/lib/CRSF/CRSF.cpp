@@ -45,7 +45,7 @@ volatile crsfPayloadLinkstatistics_s CRSF::LinkStatistics;
 
 //CRSF::CRSF(HardwareSerial &serial) : CRSF_SERIAL(serial){};
 
-void CRSF::Begin()
+void ICACHE_FLASH_ATTR CRSF::Begin()
 {
 
 #ifdef PLATFORM_ESP32

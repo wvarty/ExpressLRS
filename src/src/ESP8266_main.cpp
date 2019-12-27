@@ -22,7 +22,7 @@ LPF fltr_uplink_SNR;
 LPF fltr_uplink_Link_quality;
 
 LPF fltr_HWtimer;
-///////////////////////////////////////////////////
+/////////////////////////////////////////////////// 
 
 ///forward defs///
 void SetRFLinkRate(expresslrs_mod_settings_s mode);
@@ -425,7 +425,7 @@ void ICACHE_RAM_ATTR SetRFLinkRate(expresslrs_mod_settings_s mode) // Set speed 
     Radio.RXnb();
 }
 
-void setup()
+void ICACHE_FLASH_ATTR setup()
 {
     Serial.begin(420000);
     Serial.println("Module Booting...");
