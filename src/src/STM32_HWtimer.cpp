@@ -13,27 +13,32 @@ int16_t HWtimer::PhaseShift = 0;
 uint32_t HWtimer::LastCallbackMicros = 0;
 uint32_t HWtimer::LastCallbackMicros_180 = 0;
 
+
+#if defined(TIM1)
+TIM_TypeDef *HWtimer::Instance = TIM1;
+#else
+TIM_TypeDef *HWtimer::Instance = TIM2;
+#endif
+
+HardwareTimer *HWtimer::MyTim = new HardwareTimer(Instance);
+
 void ICACHE_RAM_ATTR HWtimer::Init()
 {
 
 // Instantiate HardwareTimer object. Thanks to 'new' instantiation, HardwareTimer is not destructed when setup() function is finished.
-#if defined(TIM1)
-    TIM_TypeDef *Instance = TIM1;
-#else
-    TIM_TypeDef *Instance = TIM2;
-#endif
 
-    HardwareTimer *MyTim = new HardwareTimer(Instance);
+
+    //HardwareTimer *MyTim = new HardwareTimer(Instance);
 
     noInterrupts();
     //timer1_attachInterrupt(HWtimer::TimerCallback);
     //timer1_enable(TIM_DIV16, TIM_EDGE, TIM_LOOP); //5MHz ticks
     //timer1_write(HWtimer::TimerInterval);
 
-    MyTim->setMode(2, TIMER_OUTPUT_COMPARE);                     // In our case, channekFalling is configured but not really used. Nevertheless it would be possible to attach a callback to channel compare match.
-    MyTim->setOverflow(HWtimer::TimerInterval, MICROSEC_FORMAT); // 10 Hz
-    MyTim->attachInterrupt(HWtimer::TimerCallback);
-    MyTim->resume();
+    HWtimer::MyTim->setMode(2, TIMER_OUTPUT_COMPARE);                     // In our case, channekFalling is configured but not really used. Nevertheless it would be possible to attach a callback to channel compare match.
+    HWtimer::MyTim->setOverflow(HWtimer::TimerInterval, MICROSEC_FORMAT); // 10 Hz
+    HWtimer::MyTim->attachInterrupt(HWtimer::TimerCallback);
+    HWtimer::MyTim->resume();
     interrupts();
 }
 
@@ -46,7 +51,7 @@ void ICACHE_RAM_ATTR HWtimer::UpdateInterval(uint32_t TimerInterval_)
 {
     HWtimer::TimerInterval = TimerInterval;
     //timer1_write(TimerInterval / 2);
-    MyTim->setOverflow(HWtimer::TimerInterval / 2, MICROSEC_FORMAT);
+    HWtimer::MyTim->setOverflow(HWtimer::TimerInterval / 2, MICROSEC_FORMAT);
 }
 
 void ICACHE_RAM_ATTR HWtimer::UpdatePhaseShift(int16_t Offset_)
@@ -63,14 +68,14 @@ void ICACHE_RAM_ATTR HWtimer::TimerCallback(HardwareTimer*)
         if (ResetNextLoop)
         {
             //timer1_write(HWtimer::TimerInterval / 2);
-            MyTim->setOverflow(HWtimer::TimerInterval / 2, MICROSEC_FORMAT);
+            HWtimer::MyTim->setOverflow(HWtimer::TimerInterval / 2, MICROSEC_FORMAT);
             HWtimer::ResetNextLoop = false;
         }
 
         if (HWtimer::PhaseShift > 0 || HWtimer::PhaseShift < 0)
         {
             //timer1_write((HWtimer::TimerInterval + HWtimer::PhaseShift) / 2);
-            MyTim->setOverflow(((HWtimer::TimerInterval + HWtimer::PhaseShift) / 2), MICROSEC_FORMAT);
+            HWtimer::MyTim->setOverflow(((HWtimer::TimerInterval + HWtimer::PhaseShift) / 2), MICROSEC_FORMAT);
             HWtimer::ResetNextLoop = true;
             HWtimer::PhaseShift = 0;
         }

@@ -20,7 +20,15 @@
 #include "ESP8266_LinkQuality.h"
 
 SX127xDriver Radio;
+
+#ifdef PLATFORM_ESP8266
 CRSF crsf(Serial); //pass a serial port object to the class for it to use
+#endif
+
+#ifdef PLATFORM_STM32
+HardwareSerial Serial1(GPIO_PIN_RCSIGNAL_RX, GPIO_PIN_RCSIGNAL_TX);
+CRSF crsf(Serial1); //pass a serial port object to the class for it to use
+#endif
 
 HWtimer HWtimer;
 

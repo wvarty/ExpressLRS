@@ -5,6 +5,8 @@
 
 
 
+//HardwareTimer *MyTim;
+
 class HWtimer
 {
 public:
@@ -21,9 +23,10 @@ public:
 
     static void ICACHE_RAM_ATTR UpdateInterval(uint32_t TimerInterval_);
     static void ICACHE_RAM_ATTR UpdatePhaseShift(int16_t Offset_);
-    static void ICACHE_RAM_ATTR TimerCallback(HardwareTimer*);
+    static void ICACHE_RAM_ATTR TimerCallback(HardwareTimer *);
     static void ICACHE_RAM_ATTR Init();
     static void ICACHE_RAM_ATTR Stop();
 
     static HardwareTimer *MyTim;
+    static TIM_TypeDef *Instance;
 };

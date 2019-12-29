@@ -45,7 +45,7 @@ volatile crsfPayloadLinkstatistics_s CRSF::LinkStatistics;
 
 //CRSF::CRSF(HardwareSerial &serial) : CRSF_SERIAL(serial){};
 
-void ICACHE_FLASH_ATTR CRSF::Begin()
+void CRSF::Begin()
 {
 
 #ifdef PLATFORM_ESP32
@@ -77,7 +77,7 @@ void ICACHE_RAM_ATTR CRSF::sendLinkStatisticsToTX()
 }
 #endif
 
-#ifdef PLATFORM_ESP8266
+#if defined(PLATFORM_ESP8266) || defined(PLATFORM_STM32)
 void ICACHE_RAM_ATTR CRSF::sendLinkStatisticsToFC()
 {
     uint8_t outBuffer[LinkStatisticsFrameLength + 4] = {0};
