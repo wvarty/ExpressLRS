@@ -1,9 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
-//#include "..\..\src\targets.h"
-
-#include "LoRa_SX127x_Regs.h"
+#include "LoRaRadioLib.h"
 
 #ifdef PLATFORM_ESP32
 #include "FreeRTOS.h"

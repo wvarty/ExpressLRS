@@ -21,14 +21,17 @@
 
 SX127xDriver Radio;
 
-#ifdef PLATFORM_ESP8266
-CRSF crsf(Serial); //pass a serial port object to the class for it to use
-#endif
+//#ifdef PLATFORM_ESP8266
+//CRSF crsf(Serial); //pass a serial port object to the class for it to use
+//#endif
 
-#ifdef PLATFORM_STM32
-HardwareSerial Serial1(GPIO_PIN_RCSIGNAL_RX, GPIO_PIN_RCSIGNAL_TX);
-CRSF crsf(Serial1); //pass a serial port object to the class for it to use
-#endif
+//#ifdef PLATFORM_STM32
+//HardwareSerial Serial1(GPIO_PIN_RCSIGNAL_RX, GPIO_PIN_RCSIGNAL_TX);
+//CRSF crsf(Serial1); //pass a serial port object to the class for it to use
+//#endif
+
+CRSF crsf(Serial); //pass a serial port object to the class for it to use
+
 
 HWtimer HWtimer;
 
@@ -448,7 +451,9 @@ void ICACHE_RAM_ATTR SetRFLinkRate(expresslrs_mod_settings_s mode) // Set speed 
 
 void setup()
 {
+
     Serial.begin(420000);
+
     Serial.println("Module Booting...");
     pinMode(GPIO_PIN_LED, OUTPUT);
     pinMode(GPIO_PIN_BUTTON, INPUT);
