@@ -3,13 +3,12 @@
 
 #define EMPTY() 
 
-
+#ifdef PLATFORM_STM32
+#define ICACHE_RAM_ATTR //nothing//
+#else
 #ifndef ICACHE_RAM_ATTR //fix to allow both esp32 and esp8266
 #define ICACHE_RAM_ATTR IRAM_ATTR
 #endif
-
-#ifdef PLATFORM_STM32
-#define ICACHE_RAM_ATTR //nothing//
 #endif
 
 

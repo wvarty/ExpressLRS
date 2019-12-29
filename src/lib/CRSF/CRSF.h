@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include "HardwareSerial.h"
+#include "..\..\src\targets.h"
 
 #ifdef PLATFORM_ESP32
 #include "esp32-hal-uart.h"
@@ -256,7 +257,7 @@ class CRSF
 {
 
 public:
-#ifdef PLATFORM_ESP8266
+#if defined(PLATFORM_ESP8266) || defined(PLATFORM_STM32)
     //CRSF(HardwareSerial& serial);
     CRSF(Stream *dev) : _dev(dev) {}
     CRSF(Stream &dev) : _dev(&dev) {}

@@ -1,7 +1,9 @@
-#include "LoRa_lowlevel.h"
-#include "LoRa_SX127x.h"
-#include "LoRa_SX1276.h"
-#include "LoRa_SX1278.h"
+#include "LoRaRadioLib.h"
+//#include "LoRa_SX127x_Regs.h"
+//#include "LoRa_lowlevel.h"
+//#include "LoRa_SX127x.h"
+//#include "LoRa_SX1276.h"
+//#include "LoRa_SX1278.h"
 
 //SX1276::SX1276(int nss, float freq, Bandwidth bw, SpreadingFactor sf, CodingRate cr, int dio0, int dio1, uint8_t syncWord) : SX1278(nss, freq, bw, sf, cr, dio0, dio1, syncWord) {
 //

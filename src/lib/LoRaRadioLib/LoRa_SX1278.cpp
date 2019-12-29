@@ -1,7 +1,8 @@
 #include <Arduino.h>
-#include "LoRa_SX127x.h"
-#include "LoRa_SX1278.h"
-#include "LoRa_lowlevel.h"
+#include "LoRaRadioLib.h"
+//#include "LoRa_SX127x.h"
+//#include "LoRa_SX1278.h"
+//#include "LoRa_lowlevel.h"
 
 //uint8_t SX1278rxISRprocess(char* data, uint8_t* length) {  //ADDED CHANGED
 //  // get header mode

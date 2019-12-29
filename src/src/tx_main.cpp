@@ -5,7 +5,7 @@
 #include "LoRaRadioLib.h"
 #include "CRSF.h"
 #include "FHSS.h"
-#include "LED.h"
+#include "WS281B_LED.h"
 #include "Debug.h"
 #include "LowPassFilter.h"
 

@@ -1,8 +1,9 @@
 #include <Arduino.h>
+#include "LoRaRadioLib.h"
 #include "targets.h"
 #include "utils.h"
 #include "common.h"
-#include "LoRaRadioLib.h"
+
 #include "CRSF.h"
 
 #include "FHSS.h"
@@ -15,7 +16,6 @@
 #include "ESP8266_HWtimer.h"
 #include "ESP8266_WebUpdate.h"
 #endif
-
 
 #include "ESP8266_LinkQuality.h"
 
@@ -31,7 +31,7 @@ LPF fltr_uplink_SNR;
 LPF fltr_uplink_Link_quality;
 
 LPF fltr_HWtimer;
-/////////////////////////////////////////////////// 
+///////////////////////////////////////////////////
 
 ///forward defs///
 void SetRFLinkRate(expresslrs_mod_settings_s mode);
@@ -370,7 +370,7 @@ void ICACHE_RAM_ATTR ProcessRFPacket()
             //Serial.println(inCRC);
             CRCerrorCounter++;
         }
-        
+
         getRFlinkInfo(); // run if CRC is valid
     }
     else
@@ -419,12 +419,11 @@ void ICACHE_RAM_ATTR sampleButton()
         }
     }
 
-
     if ((millis() > buttonLastPressed + buttonResetInterval) && buttonDown)
     {
         ESP.restart();
     }
- #endif       
+#endif
 
     buttonPrevValue = buttonValue;
 }
@@ -439,7 +438,7 @@ void ICACHE_RAM_ATTR SetRFLinkRate(expresslrs_mod_settings_s mode) // Set speed 
     Radio.RXnb();
 }
 
-void ICACHE_FLASH_ATTR setup()
+void setup()
 {
     Serial.begin(420000);
     Serial.println("Module Booting...");
@@ -495,9 +494,9 @@ void loop()
 {
 #ifndef PLATFORM_STM32
 #ifdef Auto_WiFi_On_Boot
-    if(LostConnection && !webUpdateMode && millis() > 10000 && millis() < 11000)
+    if (LostConnection && !webUpdateMode && millis() > 10000 && millis() < 11000)
     {
-        beginWebsever();    
+        beginWebsever();
     }
 #endif
 #endif
@@ -607,7 +606,7 @@ void loop()
     }
 
     //yield();
-
+#ifndef PLATFORM_STM32
     if (webUpdateMode)
     {
         HandleWebUpdate();
@@ -618,4 +617,5 @@ void loop()
             webUpdateLedFlashIntervalLast = millis();
         }
     }
+#endif
 }
