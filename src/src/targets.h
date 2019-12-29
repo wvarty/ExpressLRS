@@ -80,6 +80,8 @@
 #define GPIO_PIN_OLED_SCK -1
 #define GPIO_PIN_RCSIGNAL_RX -1 //not relevant, can use only default for esp8266=esp8285
 #define GPIO_PIN_RCSIGNAL_TX -1
+#define GPIO_PIN_LED         16 // board led
+#define GPIO_PIN_BUTTON      2 // Green - Currently unused
 #endif
 
 /*
@@ -102,7 +104,7 @@ https://github.com/jaxxzer
 #define GPIO_PIN_RCSIGNAL_TX PA9
 #define GPIO_PIN_LED         PC1 // Red
 #define GPIO_PIN_LED_GEEN    PB3 // Green - Currently unused
-#define Button               PC13 // pullup e.g. LOW when pressed
+#define GPIO_PIN_BUTTON      PC13 // pullup e.g. LOW when pressed
 
 // External pads
 // #define R9m_Ch1    PA8

@@ -101,7 +101,7 @@ uint32_t LostConnectionDelay = 1000; //after 1500ms we consider that we lost con
 bool LostConnection = true;
 bool gotFHSSsync = false;
 uint32_t LastValidPacket = 0; //Time the last valid packet was recv
-///////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////
 
 uint8_t SYN_ACK_STATE = 0;
 uint8_t SYNACK_PKTtoXFER[8] = {0};
@@ -402,7 +402,7 @@ void beginWebsever()
 void ICACHE_RAM_ATTR sampleButton()
 {
 
-    bool buttonValue = digitalRead(0);
+    bool buttonValue = digitalRead(GPIO_PIN_BUTTON);
 
     if (buttonValue == false && buttonPrevValue == true)
     { //falling edge
@@ -450,17 +450,17 @@ void setup()
 {
     Serial.begin(420000);
     Serial.println("Module Booting...");
-    pinMode(16, OUTPUT);
-    pinMode(2, INPUT);
+    pinMode(GPIO_PIN_LED, OUTPUT);
+    pinMode(GPIO_PIN_BUTTON, INPUT);
 
     delay(200);
-    digitalWrite(16, HIGH);
+    digitalWrite(GPIO_PIN_LED, HIGH);
     delay(200);
-    digitalWrite(16, LOW);
+    digitalWrite(GPIO_PIN_LED, LOW);
     delay(200);
-    digitalWrite(16, HIGH);
+    digitalWrite(GPIO_PIN_LED, HIGH);
     delay(200);
-    digitalWrite(16, LOW);
+    digitalWrite(GPIO_PIN_LED, LOW);
 
     FHSSrandomiseFHSSsequence();
 
@@ -537,7 +537,7 @@ void loop()
             break;
         }
 
-        digitalWrite(16, LED);
+        digitalWrite(GPIO_PIN_LED, LED);
         LED = !LED;
 
         if (scanIndex == 3)
@@ -556,12 +556,12 @@ void loop()
         if (!LostConnection)
         {
             LostConnection = true;
-            digitalWrite(16, 0);
+            digitalWrite(GPIO_PIN_LED, 0);
         }
     }
     else
     {
-        digitalWrite(16, 1);
+        digitalWrite(GPIO_PIN_LED, 1);
     }
 
     // if (millis() > (PacketRateLastChecked + PacketRateInterval)) //just some debug data
