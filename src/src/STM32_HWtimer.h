@@ -1,10 +1,9 @@
 #pragma once
 #include "Arduino.h"
+#include <HardwareTimer.h>
+#include "targets.h"
 
-extern "C"
-{
-#include "user_interface.h"
-}
+
 
 class HWtimer
 {

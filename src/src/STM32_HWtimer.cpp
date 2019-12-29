@@ -1,4 +1,4 @@
-#include "ESP8266_HWtimer.h"
+#include "STM32_HWtimer.h"
 
 void inline HWtimer::nullCallback(void){};
 
@@ -15,6 +15,16 @@ uint32_t HWtimer::LastCallbackMicros_180 = 0;
 
 void ICACHE_RAM_ATTR HWtimer::Init()
 {
+
+// Instantiate HardwareTimer object. Thanks to 'new' instantiation, HardwareTimer is not destructed when setup() function is finished.
+#if defined(TIM1)
+    TIM_TypeDef *Instance = TIM1;
+#else
+    TIM_TypeDef *Instance = TIM2;
+#endif
+
+    HardwareTimer *MyTim = new HardwareTimer(Instance);
+
     noInterrupts();
     timer1_attachInterrupt(HWtimer::TimerCallback);
     timer1_enable(TIM_DIV16, TIM_EDGE, TIM_LOOP); //5MHz ticks

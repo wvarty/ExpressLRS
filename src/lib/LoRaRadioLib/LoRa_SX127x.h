@@ -13,10 +13,6 @@
 #include <cstdint>
 #endif
 
-#ifndef ICACHE_RAM_ATTR
-#define ICACHE_RAM_ATTR IRAM_ATTR
-#endif
-
 typedef enum
 {
     CURR_OPMODE_FSK_OOK = 0b00000000,

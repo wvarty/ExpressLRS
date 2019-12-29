@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include "targets.h"
 #include "utils.h"
 #include "common.h"
 #include "LoRaRadioLib.h"
@@ -7,7 +8,7 @@
 #include "LED.h"
 #include "Debug.h"
 #include "LowPassFilter.h"
-#include "targets.h"
+
 
 String DebugOutput;
 

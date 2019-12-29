@@ -1,13 +1,22 @@
 #include <Arduino.h>
+#include "targets.h"
 #include "utils.h"
 #include "common.h"
 #include "LoRaRadioLib.h"
 #include "CRSF.h"
-#include "ESP8266_WebUpdate.h"
+
 #include "FHSS.h"
-#include "Debug.h"
+//#include "Debug.h"
 #include "LowPassFilter.h"
+
+#ifdef PLATFORM_STM32
+#include "STM32_HWtimer.h"
+#else
 #include "ESP8266_HWtimer.h"
+#include "ESP8266_WebUpdate.h"
+#endif
+
+
 #include "ESP8266_LinkQuality.h"
 
 SX127xDriver Radio;
@@ -370,6 +379,7 @@ void ICACHE_RAM_ATTR ProcessRFPacket()
     }
 }
 
+#ifndef PLATFORM_STM32
 void beginWebsever()
 {
     Radio.StopContRX();
@@ -379,6 +389,7 @@ void beginWebsever()
     BeginWebUpdate();
     webUpdateMode = true;
 }
+#endif
 
 void ICACHE_RAM_ATTR sampleButton()
 {
@@ -399,6 +410,7 @@ void ICACHE_RAM_ATTR sampleButton()
         buttonDown = false;
     }
 
+#ifndef PLATFORM_STM32
     if ((millis() > buttonLastPressed + webUpdatePressInterval) && buttonDown)
     {
         if (!webUpdateMode)
@@ -407,10 +419,12 @@ void ICACHE_RAM_ATTR sampleButton()
         }
     }
 
+
     if ((millis() > buttonLastPressed + buttonResetInterval) && buttonDown)
     {
         ESP.restart();
     }
+ #endif       
 
     buttonPrevValue = buttonValue;
 }
@@ -479,12 +493,13 @@ void ICACHE_FLASH_ATTR setup()
 
 void loop()
 {
-
+#ifndef PLATFORM_STM32
 #ifdef Auto_WiFi_On_Boot
     if(LostConnection && !webUpdateMode && millis() > 10000 && millis() < 11000)
     {
         beginWebsever();    
     }
+#endif
 #endif
 
     if (LostConnection && !webUpdateMode)

@@ -4,11 +4,6 @@
 #include "LoRa_SX127x.h"
 //#include "SPIdriver.h"
 
-
-#ifndef ICACHE_RAM_ATTR //fix to allow both esp32 and esp8266
-#define ICACHE_RAM_ATTR IRAM_ATTR
-#endif
-
 void initModule(uint8_t nss, uint8_t dio0, uint8_t dio1);
 void initModule();
 void RFmoduleBegin(); 
