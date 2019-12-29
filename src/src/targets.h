@@ -82,6 +82,10 @@
 #define GPIO_PIN_RCSIGNAL_TX -1
 #endif
 
+/*
+Credit to Jacob Walser (jaxxzer) for the pinout!!!
+https://github.com/jaxxzer
+*/
 #ifdef TARGET_R9M_RX
 #define GPIO_PIN_NSS         PB12
 #define GPIO_PIN_DIO0        PA0
@@ -98,6 +102,7 @@
 #define GPIO_PIN_RCSIGNAL_TX PA9
 #define GPIO_PIN_LED         PC1 // Red
 #define GPIO_PIN_LED_GEEN    PB3 // Green - Currently unused
+#define Button               PC13 // pullup e.g. LOW when pressed
 
 // External pads
 // #define R9m_Ch1    PA8
