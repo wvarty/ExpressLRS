@@ -11,13 +11,14 @@
 #include "LowPassFilter.h"
 
 #ifdef PLATFORM_STM32
-#include "STM32_HWtimer.h"
+// #include "STM32_HWtimer.h"
 #else
-#include "ESP8266_HWtimer.h"
+// #include "ESP8266_HWtimer.h"
 #include "ESP8266_WebUpdate.h"
 #endif
 
-#include "ESP8266_LinkQuality.h"
+#include "HardwareTimer.h"
+#include "LinkQuality.h"
 
 SX127xDriver Radio;
 
@@ -33,7 +34,7 @@ SX127xDriver Radio;
 CRSF crsf(Serial); //pass a serial port object to the class for it to use
 
 
-HWtimer HWtimer;
+// HWtimer HWtimer;
 
 ////////////////// Filters ///////////////////////
 LPF fltr_uplink_RSSI_1;
@@ -203,8 +204,8 @@ void ICACHE_RAM_ATTR TimerCallback()
 
 void ICACHE_RAM_ATTR TimerCallback_180()
 {
-    //MeasuredHWtimerInterval = micros() - HWtimerGetlastCallbackMicros();
-    MeasuredHWtimerInterval = micros() - HWtimer.LastCallbackMicros;
+    MeasuredHWtimerInterval = micros() - HWtimerGetlastCallbackMicros();
+    // MeasuredHWtimerInterval = micros() - HWtimer.LastCallbackMicros;
 }
 
 void ICACHE_RAM_ATTR Test90()
@@ -216,37 +217,37 @@ void ICACHE_RAM_ATTR Test90()
 
 void ICACHE_RAM_ATTR Test()
 {
-    //MeasuredHWtimerInterval = micros() - HWtimerGetlastCallbackMicros();
-    MeasuredHWtimerInterval = micros() - HWtimer.LastCallbackMicros;
+    MeasuredHWtimerInterval = micros() - HWtimerGetlastCallbackMicros();
+    // MeasuredHWtimerInterval = micros() - HWtimer.LastCallbackMicros;
 }
 
 // ///////////Super Simple Lowpass for 'PLL' (not really a PLL)/////////
-// int RawData;
-// int32_t SmoothDataINT;
-// int32_t SmoothDataFP;
-// int Beta = 3;     // Length = 16
-// int FP_Shift = 3; //Number of fractional bits
+int RawData;
+int32_t SmoothDataINT;
+int32_t SmoothDataFP;
+int Beta = 3;     // Length = 16
+int FP_Shift = 3; //Number of fractional bits
 
-// int16_t ICACHE_RAM_ATTR SimpleLowPass(int16_t Indata)
-// {
-//     RawData = Indata;
-//     RawData <<= FP_Shift; // Shift to fixed point
-//     SmoothDataFP = (SmoothDataFP << Beta) - SmoothDataFP;
-//     SmoothDataFP += RawData;
-//     SmoothDataFP >>= Beta;
-//     // Don't do the following shift if you want to do further
-//     // calculations in fixed-point using SmoothData
-//     SmoothDataINT = SmoothDataFP >> FP_Shift;
-//     return SmoothDataINT;
-// }
+int16_t ICACHE_RAM_ATTR SimpleLowPass(int16_t Indata)
+{
+    RawData = Indata;
+    RawData <<= FP_Shift; // Shift to fixed point
+    SmoothDataFP = (SmoothDataFP << Beta) - SmoothDataFP;
+    SmoothDataFP += RawData;
+    SmoothDataFP >>= Beta;
+    // Don't do the following shift if you want to do further
+    // calculations in fixed-point using SmoothData
+    SmoothDataINT = SmoothDataFP >> FP_Shift;
+    return SmoothDataINT;
+}
 // //////////////////////////////////////////////////////////////////////
 
 void ICACHE_RAM_ATTR GotConnection()
 {
     if (LostConnection)
     {
-        //InitHarwareTimer();
-        HWtimer.Init();
+        InitHarwareTimer();
+        // HWtimer.Init();
         LostConnection = false; //we got a packet, therefore no lost connection
         Serial.println("got conn");
     }
@@ -300,19 +301,19 @@ void ICACHE_RAM_ATTR ProcessRFPacket()
 
             LastValidPacket = millis();
 
-            // HWtimerError = micros() - HWtimerGetlastCallbackMicros();
+            HWtimerError = micros() - HWtimerGetlastCallbackMicros();
 
-            // HWtimerError90 = micros() - HWtimerGetlastCallbackMicros90();
+            HWtimerError90 = micros() - HWtimerGetlastCallbackMicros90();
 
-            // //uint32_t HWtimerInterval = HWtimerGetIntervalMicros(); // not used? delete?
+            //uint32_t HWtimerInterval = HWtimerGetIntervalMicros(); // not used? delete?
 
-            // Offset = SimpleLowPass(HWtimerError - (ExpressLRS_currAirRate.interval / 2) + 300); //crude 'locking function' to lock hardware timer to transmitter, seems to work well enough
-            // HWtimerPhaseShift(Offset / 2);
+            Offset = SimpleLowPass(HWtimerError - (ExpressLRS_currAirRate.interval / 2) + 300); //crude 'locking function' to lock hardware timer to transmitter, seems to work well enough
+            HWtimerPhaseShift(Offset / 2);
 
-            HWtimerError = micros() - HWtimer.LastCallbackMicros;
-            HWtimerError90 = micros() - HWtimer.LastCallbackMicros_180;
-            Offset = fltr_HWtimer.update(HWtimerError - (ExpressLRS_currAirRate.interval / 2) + 300);
-            HWtimer.UpdatePhaseShift(Offset / 2);
+            // HWtimerError = micros() - HWtimer.LastCallbackMicros;
+            // HWtimerError90 = micros() - HWtimer.LastCallbackMicros_180;
+            // Offset = fltr_HWtimer.update(HWtimerError - (ExpressLRS_currAirRate.interval / 2) + 300);
+            // HWtimer.UpdatePhaseShift(Offset / 2);
 
             if (type == 0b00) //std 4 channel switch data
             {
@@ -394,8 +395,8 @@ void ICACHE_RAM_ATTR ProcessRFPacket()
 void beginWebsever()
 {
     Radio.StopContRX();
-    HWtimer.Stop();
-    //StopHWtimer();
+    // HWtimer.Stop();
+    StopHWtimer();
 
     BeginWebUpdate();
     webUpdateMode = true;
@@ -444,8 +445,8 @@ void ICACHE_RAM_ATTR SetRFLinkRate(expresslrs_mod_settings_s mode) // Set speed 
     Radio.StopContRX();
     Radio.Config(mode.bw, mode.sf, mode.cr, Radio.currFreq, Radio._syncWord);
     ExpressLRS_currAirRate = mode;
-    //HWtimerUpdateInterval(mode.interval);
-    HWtimer.UpdateInterval(mode.interval);
+    HWtimerUpdateInterval(mode.interval);
+    // HWtimer.UpdateInterval(mode.interval);
     Radio.RXnb();
 }
 
@@ -491,14 +492,14 @@ void setup()
 
     crsf.Begin();
 
-    //HWtimerSetCallback(&Test);
-    //HWtimerSetCallback90(&Test90);
+    HWtimerSetCallback(&TimerCallback);
+    HWtimerSetCallback90(&TimerCallback_180);
 
     //HWtimer.CallBack = &Test;
     //HWtimer.CallBack_180 = &Test90;
 
-    HWtimer.CallBack = &TimerCallback;
-    HWtimer.CallBack_180 = &TimerCallback_180;
+    // HWtimer.CallBack = &TimerCallback;
+    // HWtimer.CallBack_180 = &TimerCallback_180;
 
     SetRFLinkRate(RF_RATE_200HZ);
 }
@@ -517,8 +518,8 @@ void loop()
     if (LostConnection && !webUpdateMode)
 
     {
-        //StopHWtimer();
-        HWtimer.Stop();
+        StopHWtimer();
+        // HWtimer.Stop();
         Radio.SetFrequency(GetInitialFreq());
         switch (scanIndex)
         {
