@@ -1,14 +1,14 @@
 #include "Arduino.h"
 #include "HardwareTimer.h"
 
-volatile uint32_t HWtimerInterval = TimerIntervalUSDefault;
-volatile bool TickTock = false;
-uint32_t HWtimerLastCallbackMicros = 0;
-uint32_t HWtimerLastCallbackMicros90 = 0;
-int16_t PhaseShift = 0;
-bool ResetNextLoop = false;
-void (*HWtimerCallBack)(void) = NULL;
-void (*HWtimerCallBack90)(void) = NULL;
+// volatile uint32_t HWtimerInterval = TimerIntervalUSDefault;
+// volatile bool TickTock = false;
+// uint32_t HWtimerLastCallbackMicros = 0;
+// uint32_t HWtimerLastCallbackMicros90 = 0;
+// int16_t PhaseShift = 0;
+// bool ResetNextLoop = false;
+// void (*HWtimerCallBack)(void) = NULL;
+// void (*HWtimerCallBack90)(void) = NULL;
 
 #ifdef PLATFORM_STM32
     #if defined(TIM1)

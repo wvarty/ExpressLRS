@@ -17,7 +17,7 @@
 #include "ESP8266_WebUpdate.h"
 #endif
 
-#include "HardwareTimer.h"
+// #include "HardwareTimer.h"
 #include "LinkQuality.h"
 
 SX127xDriver Radio;
@@ -52,15 +52,15 @@ void OStimerSetCallback(void (*CallbackFunc)(void));
 void OStimerReset();
 void OStimerUpdateInterval(uint32_t Interval);
 
-// void InitHarwareTimer();
-// void StopHWtimer();
-// void HWtimerSetCallback(void (*CallbackFunc)(void));
-// void HWtimerSetCallback90(void (*CallbackFunc)(void));
-// void HWtimerUpdateInterval(uint32_t Interval);
-// uint32_t ICACHE_RAM_ATTR HWtimerGetlastCallbackMicros();
-// uint32_t ICACHE_RAM_ATTR HWtimerGetlastCallbackMicros90();
-// void ICACHE_RAM_ATTR HWtimerPhaseShift(int16_t Offset);
-// uint32_t ICACHE_RAM_ATTR HWtimerGetIntervalMicros();
+void InitHarwareTimer();
+void StopHWtimer();
+void HWtimerSetCallback(void (*CallbackFunc)(void));
+void HWtimerSetCallback90(void (*CallbackFunc)(void));
+void HWtimerUpdateInterval(uint32_t Interval);
+uint32_t ICACHE_RAM_ATTR HWtimerGetlastCallbackMicros();
+uint32_t ICACHE_RAM_ATTR HWtimerGetlastCallbackMicros90();
+void ICACHE_RAM_ATTR HWtimerPhaseShift(int16_t Offset);
+uint32_t ICACHE_RAM_ATTR HWtimerGetIntervalMicros();
 
 uint8_t scanIndex = 1;
 
@@ -107,33 +107,33 @@ bool gotFHSSsync = false;
 uint32_t LastValidPacket = 0; //Time the last valid packet was recv
 ////////////////////////////////////////////////////////////////////
 
-uint8_t SYN_ACK_STATE = 0;
-uint8_t SYNACK_PKTtoXFER[8] = {0};
-uint8_t SYN_ACK_ATTEMPTS = 0;
+// uint8_t SYN_ACK_STATE = 0;
+// uint8_t SYNACK_PKTtoXFER[8] = {0};
+// uint8_t SYN_ACK_ATTEMPTS = 0;
 
-void ICACHE_RAM_ATTR HandleSYNACK()
-{
-    switch (SYN_ACK_STATE)
-    {
-    case 0:
-        //start SYNACK process
-        break;
-    case 1:
-        break;
-    case 2:
-        break;
-    default:
-        break;
-    }
-}
+// void ICACHE_RAM_ATTR HandleSYNACK()
+// {
+//     switch (SYN_ACK_STATE)
+//     {
+//     case 0:
+//         //start SYNACK process
+//         break;
+//     case 1:
+//         break;
+//     case 2:
+//         break;
+//     default:
+//         break;
+//     }
+// }
 
-void ICACHE_RAM_ATTR SYNACKdone()
-{
-}
+// void ICACHE_RAM_ATTR SYNACKdone()
+// {
+// }
 
-void ICACHE_RAM_ATTR SYNACKfailed()
-{
-}
+// void ICACHE_RAM_ATTR SYNACKfailed()
+// {
+// }
 
 void ICACHE_RAM_ATTR getRFlinkInfo()
 {
@@ -158,6 +158,7 @@ void ICACHE_RAM_ATTR HandleFHSS()
     {
         if (LostConnection == false) // don't hop if we lost
         {
+            // Serial.println("NextFreq");
             Radio.SetFrequency(FHSSgetNextFreq());
             Radio.RXnb();
         }
@@ -182,6 +183,9 @@ void ICACHE_RAM_ATTR HandleSendTelemetryResponse()
             uint8_t crc = CalcCRC(Radio.TXdataBuffer, 7) + CRCCaesarCipher;
             Radio.TXdataBuffer[7] = crc;
             Radio.TXnb(Radio.TXdataBuffer, 8);
+
+            // Serial.println(millis());
+            Serial.println("TLM");
 
             addPacketToLQ(); // Adds packet to LQ otherwise an artificial drop in LQ is seen due to sending TLM.
         }
@@ -208,18 +212,18 @@ void ICACHE_RAM_ATTR TimerCallback_180()
     // MeasuredHWtimerInterval = micros() - HWtimer.LastCallbackMicros;
 }
 
-void ICACHE_RAM_ATTR Test90()
-{
-    NonceRXlocal++;
-    HandleFHSS();
-    HandleSendTelemetryResponse();
-}
+// void ICACHE_RAM_ATTR Test90()
+// {
+//     NonceRXlocal++;
+//     HandleFHSS();
+//     HandleSendTelemetryResponse();
+// }
 
-void ICACHE_RAM_ATTR Test()
-{
-    MeasuredHWtimerInterval = micros() - HWtimerGetlastCallbackMicros();
-    // MeasuredHWtimerInterval = micros() - HWtimer.LastCallbackMicros;
-}
+// void ICACHE_RAM_ATTR Test()
+// {
+//     MeasuredHWtimerInterval = micros() - HWtimerGetlastCallbackMicros();
+//     // MeasuredHWtimerInterval = micros() - HWtimer.LastCallbackMicros;
+// }
 
 // ///////////Super Simple Lowpass for 'PLL' (not really a PLL)/////////
 int RawData;
@@ -267,22 +271,22 @@ void ICACHE_RAM_ATTR UnpackChannelData_11bit()
 #endif
 }
 
-void ICACHE_RAM_ATTR UnpackChannelData_10bit()
-{
-    crsf.PackedRCdataOut.ch0 = UINT10_to_CRSF((Radio.RXdataBuffer[1] << 2) + (Radio.RXdataBuffer[5] & 0b11000000 >> 6));
-    crsf.PackedRCdataOut.ch1 = UINT10_to_CRSF((Radio.RXdataBuffer[2] << 2) + (Radio.RXdataBuffer[5] & 0b00110000 >> 4));
-    crsf.PackedRCdataOut.ch2 = UINT10_to_CRSF((Radio.RXdataBuffer[3] << 2) + (Radio.RXdataBuffer[5] & 0b00001100 >> 2));
-    crsf.PackedRCdataOut.ch3 = UINT10_to_CRSF((Radio.RXdataBuffer[4] << 2) + (Radio.RXdataBuffer[5] & 0b00000011 >> 0));
-}
+// void ICACHE_RAM_ATTR UnpackChannelData_10bit()
+// {
+//     crsf.PackedRCdataOut.ch0 = UINT10_to_CRSF((Radio.RXdataBuffer[1] << 2) + (Radio.RXdataBuffer[5] & 0b11000000 >> 6));
+//     crsf.PackedRCdataOut.ch1 = UINT10_to_CRSF((Radio.RXdataBuffer[2] << 2) + (Radio.RXdataBuffer[5] & 0b00110000 >> 4));
+//     crsf.PackedRCdataOut.ch2 = UINT10_to_CRSF((Radio.RXdataBuffer[3] << 2) + (Radio.RXdataBuffer[5] & 0b00001100 >> 2));
+//     crsf.PackedRCdataOut.ch3 = UINT10_to_CRSF((Radio.RXdataBuffer[4] << 2) + (Radio.RXdataBuffer[5] & 0b00000011 >> 0));
+// }
 
-void ICACHE_RAM_ATTR UnpackSwitchData()
-{
+// void ICACHE_RAM_ATTR UnpackSwitchData()
+// {
 
-    crsf.PackedRCdataOut.ch4 = SWITCH3b_to_CRSF((uint16_t)(Radio.RXdataBuffer[1] & 0b11100000) >> 5); //unpack the byte structure, each switch is stored as a possible 8 states (3 bits). we shift by 2 to translate it into the 0....1024 range like the other channel data.
-    crsf.PackedRCdataOut.ch5 = SWITCH3b_to_CRSF((uint16_t)(Radio.RXdataBuffer[1] & 0b00011100) >> 2);
-    crsf.PackedRCdataOut.ch6 = SWITCH3b_to_CRSF((uint16_t)((Radio.RXdataBuffer[1] & 0b00000011) << 1) + ((Radio.RXdataBuffer[2] & 0b10000000) >> 7));
-    crsf.PackedRCdataOut.ch7 = SWITCH3b_to_CRSF((uint16_t)((Radio.RXdataBuffer[2] & 0b01110000) >> 4));
-}
+//     crsf.PackedRCdataOut.ch4 = SWITCH3b_to_CRSF((uint16_t)(Radio.RXdataBuffer[1] & 0b11100000) >> 5); //unpack the byte structure, each switch is stored as a possible 8 states (3 bits). we shift by 2 to translate it into the 0....1024 range like the other channel data.
+//     crsf.PackedRCdataOut.ch5 = SWITCH3b_to_CRSF((uint16_t)(Radio.RXdataBuffer[1] & 0b00011100) >> 2);
+//     crsf.PackedRCdataOut.ch6 = SWITCH3b_to_CRSF((uint16_t)((Radio.RXdataBuffer[1] & 0b00000011) << 1) + ((Radio.RXdataBuffer[2] & 0b10000000) >> 7));
+//     crsf.PackedRCdataOut.ch7 = SWITCH3b_to_CRSF((uint16_t)((Radio.RXdataBuffer[2] & 0b01110000) >> 4));
+// }
 
 void ICACHE_RAM_ATTR ProcessRFPacket()
 {
@@ -291,7 +295,7 @@ void ICACHE_RAM_ATTR ProcessRFPacket()
     uint8_t inCRC = Radio.RXdataBuffer[7];
     uint8_t type = Radio.RXdataBuffer[0] & 0b11;
     uint8_t packetAddr = (Radio.RXdataBuffer[0] & 0b11111100) >> 2;
-
+// Serial.print(millis());
     if (packetAddr == DeviceAddr)
     {
         if ((inCRC == calculatedCRC))
@@ -305,8 +309,7 @@ void ICACHE_RAM_ATTR ProcessRFPacket()
 
             HWtimerError90 = micros() - HWtimerGetlastCallbackMicros90();
 
-            //uint32_t HWtimerInterval = HWtimerGetIntervalMicros(); // not used? delete?
-
+            // uint32_t HWtimerInterval = HWtimerGetIntervalMicros();
             Offset = SimpleLowPass(HWtimerError - (ExpressLRS_currAirRate.interval / 2) + 300); //crude 'locking function' to lock hardware timer to transmitter, seems to work well enough
             HWtimerPhaseShift(Offset / 2);
 
@@ -317,31 +320,39 @@ void ICACHE_RAM_ATTR ProcessRFPacket()
 
             if (type == 0b00) //std 4 channel switch data
             {
+                // Serial.println("RC");
+                Serial.println(millis());
                 UnpackChannelData_11bit();
                 crsf.sendRCFrameToFC();
             }
 
             if (type == 0b01)
             {
-                if ((Radio.RXdataBuffer[3] == Radio.RXdataBuffer[1]) && Radio.RXdataBuffer[4] == Radio.RXdataBuffer[2]) // extra layer of protection incase the crc and addr headers fail us.
-                {
-                    UnpackSwitchData();
+                // Serial.println("0b01");
+                Serial.println(millis());
+                // if ((Radio.RXdataBuffer[3] == Radio.RXdataBuffer[1]) && Radio.RXdataBuffer[4] == Radio.RXdataBuffer[2]) // extra layer of protection incase the crc and addr headers fail us.
+                // {
+                //     UnpackSwitchData();
 
-                    NonceRXlocal = Radio.RXdataBuffer[5];
-                    FHSSsetCurrIndex(Radio.RXdataBuffer[6]);
-                    GotConnection();
-                    crsf.sendRCFrameToFC();
-                }
+                //     NonceRXlocal = Radio.RXdataBuffer[5];
+                //     FHSSsetCurrIndex(Radio.RXdataBuffer[6]);
+                //     GotConnection();
+                //     crsf.sendRCFrameToFC();
+                // }
             }
 
             if (type == 0b11)
             { //control packet from master with ack/syn
                 // not implimented yet
+                // Serial.println("0b11");
+                Serial.println(millis());
             }
 
             if (type == 0b10 && Radio.RXdataBuffer[4] == TxBaseMac[3] && Radio.RXdataBuffer[5] == TxBaseMac[4] && Radio.RXdataBuffer[6] == TxBaseMac[5])
             { //sync packet from master
-                //Serial.println("Sync Packet");
+                // Serial.println("Sync");                
+                Serial.println(millis());
+                // Serial.println(linkQuality);
 
                 FHSSsetCurrIndex(Radio.RXdataBuffer[1]);
 
@@ -453,20 +464,21 @@ void ICACHE_RAM_ATTR SetRFLinkRate(expresslrs_mod_settings_s mode) // Set speed 
 void setup()
 {
 
-    Serial.begin(420000);
+    // Serial.begin(420000);
+    Serial.begin(115200);
 
     Serial.println("Module Booting...");
     pinMode(GPIO_PIN_LED, OUTPUT);
     pinMode(GPIO_PIN_BUTTON, INPUT);
 
-    delay(200);
-    digitalWrite(GPIO_PIN_LED, HIGH);
-    delay(200);
-    digitalWrite(GPIO_PIN_LED, LOW);
-    delay(200);
-    digitalWrite(GPIO_PIN_LED, HIGH);
-    delay(200);
-    digitalWrite(GPIO_PIN_LED, LOW);
+    // delay(200);
+    // digitalWrite(GPIO_PIN_LED, HIGH);
+    // delay(200);
+    // digitalWrite(GPIO_PIN_LED, LOW);
+    // delay(200);
+    // digitalWrite(GPIO_PIN_LED, HIGH);
+    // delay(200);
+    // digitalWrite(GPIO_PIN_LED, LOW);
 
     FHSSrandomiseFHSSsequence();
 
@@ -494,6 +506,7 @@ void setup()
 
     HWtimerSetCallback(&TimerCallback);
     HWtimerSetCallback90(&TimerCallback_180);
+    InitHarwareTimer();
 
     //HWtimer.CallBack = &Test;
     //HWtimer.CallBack_180 = &Test90;
@@ -504,8 +517,16 @@ void setup()
     SetRFLinkRate(RF_RATE_200HZ);
 }
 
+int lastTime = 0;
 void loop()
 {
+
+    // if(millis() > (lastTime + 1000))
+    // {        
+    //     lastTime = millis();
+    //     Serial.println(linkQuality);
+    // }
+
 #ifndef PLATFORM_STM32
 #ifdef Auto_WiFi_On_Boot
     if (LostConnection && !webUpdateMode && millis() > 10000 && millis() < 11000)
