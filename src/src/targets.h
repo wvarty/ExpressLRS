@@ -90,7 +90,7 @@ https://github.com/jaxxzer
 */
 #ifdef TARGET_R9M_RX
 #define GPIO_PIN_NSS         PB12
-#define GPIO_PIN_DIO0        PA0
+#define GPIO_PIN_DIO0        PA15
 #define GPIO_PIN_DIO1        PA1 // NOT CORRECT!!! PIN STILL NEEDS TO BE FOUND BUT IS CURRENTLY UNUSED
 #define GPIO_PIN_MOSI        PB15
 #define GPIO_PIN_MISO        PB14
