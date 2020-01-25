@@ -14,6 +14,11 @@ String DebugOutput;
 SX127xDriver Radio;
 CRSF crsf;
 
+bool InBindingMode = false;
+void EnterBindingMode();
+void ExitBindingMode();
+void CancelBindingMode();
+
 //// Switch Data Handling ///////
 uint8_t SwitchPacketsCounter = 0;             //not used for the moment
 uint32_t SwitchPacketSendInterval = 200;      //not used, delete when able to
@@ -63,7 +68,6 @@ uint8_t baseMac[6];
 
 void ICACHE_RAM_ATTR ProcessTLMpacket()
 {
-
   uint8_t calculatedCRC = CalcCRC(Radio.RXdataBuffer, 7) + CRCCaesarCipher;
   uint8_t inCRC = Radio.RXdataBuffer[7];
   uint8_t type = Radio.RXdataBuffer[0] & 0b11;
@@ -198,6 +202,10 @@ void SetRFLinkRate(expresslrs_mod_settings_s mode) // Set speed of RF link (hz)
 
 void ICACHE_RAM_ATTR HandleFHSS()
 {
+  if (FreqLocked) {
+    return;
+  }
+  
   uint8_t modresult = (Radio.NonceTX) % ExpressLRS_currAirRate.FHSShopInterval;
 
   if (modresult == 0) // if it time to hop, do so.
@@ -253,7 +261,7 @@ void ICACHE_RAM_ATTR SendRCdataToRF()
   }
 
   //if (((millis() > (SyncPacketLastSent + SyncInterval)) && (Radio.currFreq == GetInitialFreq())) || ChangeAirRateRequested) //only send sync when its time and only on channel 0;+
-  if ((millis() > (SyncPacketLastSent + SyncInterval)) && (Radio.currFreq == GetInitialFreq()))
+  if ((millis() > (SyncPacketLastSent + SyncInterval)) && (Radio.currFreq == GetInitialFreq() || InBindingMode))
   {
 
     GenerateSyncPacketData();
@@ -411,6 +419,8 @@ void setup()
   Serial.println("ExpressLRS TX Module Booted...");
 
   strip.Begin();
+  for(int n = 0; n < 3; n++) strip.SetPixelColor(n, RgbColor(255, 0, 0));
+  strip.Show();
 
   // Get base mac address
   esp_read_mac(baseMac, ESP_MAC_WIFI_STA);
@@ -477,6 +487,8 @@ void setup()
   SetRFLinkRate(RF_RATE_200HZ);
   // SetRFLinkRate(RF_RATE_100HZ);
   crsf.Begin();
+
+  EnterBindingMode();
 }
 
 void loop()
@@ -494,6 +506,11 @@ void loop()
   {
     isRXconnected = true;
   }
+
+  if (millis() > 10000) {
+    ExitBindingMode();
+  }
+  
 
   if (millis() > (PacketRateLastChecked + PacketRateInterval)) //just some debug data
   {
@@ -522,4 +539,104 @@ void loop()
     }
     packetCounteRX_TX = 0;
   }
+}
+
+void EnterBindingMode()
+{
+    if (InBindingMode) {
+        // Don't enter binding if we're already connected or binding
+        return;
+    }
+
+    // Start attempting to bind
+    // Lock the RF rate and freq to the base freq while binding
+    //SetRFLinkRate(RF_RATE_100HZ);
+    //Radio.SetFrequency(FHSSGetBindingFreq());
+
+    // Use binding cipher and addr
+    // TxBaseMac[3] = BindingBaseMac[3];
+    // TxBaseMac[4] = BindingBaseMac[4];
+    // TxBaseMac[5] = BindingBaseMac[5];
+    CRCCaesarCipher = BindingCipher;
+    DeviceAddr = BindingAddr;
+
+    // FHSSrandomiseFHSSsequence();
+    // Radio.SetFrequency(GetInitialFreq());
+    // Radio.Begin();
+    SetRFLinkRate(RF_RATE_200HZ);
+
+    Radio.SetFrequency(919100000);
+    FreqLocked = true;
+
+    InBindingMode = true;
+    isRXconnected = false;
+
+    Serial.println("=== Entered binding mode ===");
+    //PrintMac();
+
+    for(int n = 0; n < 3; n++) strip.SetPixelColor(n, RgbColor(0, 0, 255));
+    strip.Show();
+}
+
+void ExitBindingMode()
+{
+  if (!InBindingMode) {
+    // Not in binding mode
+    return;
+  }
+
+  // Revert to original packet rate
+  // and go to initial freq
+  //SetRFLinkRate(ExpressLRS_prevAirRate);
+  //Radio.SetFrequency(GetInitialFreq());
+
+  // Revert to original cipher and addr
+  // TxBaseMac[3] = OGBaseMac[3];
+  // TxBaseMac[4] = OGBaseMac[4];
+  // TxBaseMac[5] = OGBaseMac[5];
+
+  CRCCaesarCipher = TxBaseMac[4];
+  DeviceAddr = TxBaseMac[5] & 0b111111;
+
+  FreqLocked = false;
+  //FHSSrandomiseFHSSsequence();
+  SetRFLinkRate(RF_RATE_200HZ);
+  Radio.SetFrequency(GetInitialFreq());
+
+  InBindingMode = false;
+  isRXconnected = false;
+
+  Serial.println("=== Binding successful ===");
+  //PrintMac();
+
+  for(int n = 0; n < 3; n++) strip.SetPixelColor(n, RgbColor(0, 255, 0));
+  strip.Show();
+}
+
+void CancelBindingMode()
+{
+  if (!InBindingMode) {
+    // Not in binding mode
+    return;
+  }
+
+  // Revert to original packet rate
+  // and go to initial freq
+  SetRFLinkRate(ExpressLRS_prevAirRate);
+  Radio.SetFrequency(GetInitialFreq());
+
+  // Revert to original cipher and addr
+  CRCCaesarCipher = TxBaseMac[4];
+  DeviceAddr = TxBaseMac[5] & 0b111111;
+
+  // Binding cancelled
+  // Go to a disconnected state
+  isRXconnected = false;
+  InBindingMode = false;
+
+  Serial.println("=== Binding mode cancelled ===");
+  //PrintMac();
+
+  for(int n = 0; n < 3; n++) strip.SetPixelColor(n, RgbColor(255, 0, 0));
+  strip.Show();
 }
