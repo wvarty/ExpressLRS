@@ -16,20 +16,17 @@
 
 //uint8_t TxBaseMac[6] = {180, 230, 45, 152, 125, 173}; // Wez's MAC
 
-uint8_t TxBaseMac[6] = {0, 0, 0, 0, 0, 0}; // Wez's MAC
+uint8_t TxBaseMac[6] = {0, 0, 0, 0, 0, 0};
 
-uint8_t BindingBaseMac[6] = {48, 174, 164, 200, 100, 50}; // Wez's MAC
+// uint8_t BindingBaseMac[6] = {48, 174, 164, 200, 12, 34};
 
 uint8_t CRCCaesarCipher = TxBaseMac[4];
-
 uint8_t DeviceAddr = TxBaseMac[5] & 0b111111; // temporarily based on mac until listen before assigning method merged
 
-uint8_t BindingCipher = BindingBaseMac[4];
-
-uint8_t BindingAddr = BindingBaseMac[5] & 0b111111; // temporarily based on mac until listen before assigning method merged
+uint8_t BindingCipher = 100;
+uint8_t BindingAddr = 50 & 0b111111; // temporarily based on mac until listen before assigning method merged
 
 bool FreqLocked = false;
-bool IsBound = false;
 
 typedef enum
 {

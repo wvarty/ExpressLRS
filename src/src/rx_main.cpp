@@ -10,9 +10,11 @@
 #ifdef PLATFORM_ESP8266
 #include "ESP8266_WebUpdate.h"
 #endif
+#include "button.h"
 
 SX127xDriver Radio;
 CRSF crsf(Serial); //pass a serial port object to the class for it to use
+Button button;
 
 ///forward defs///
 void SetRFLinkRate(expresslrs_mod_settings_s mode);
@@ -35,6 +37,12 @@ bool InBindingMode = false;
 void EnterBindingMode();
 void ExitBindingMode();
 
+#define LED_BINDING_INTERVAL 100
+#define LED_DISCONNECTED_INTERVAL 1000
+#define LED_WEB_UPDATE_INTERVAL 25
+
+void UpdateLEDState(bool forceOff = false);
+
 uint8_t scanIndex = 1;
 
 uint8_t prevAirRate = 0;
@@ -51,6 +59,9 @@ uint32_t LastSerialDebugPrint = 0;
 
 uint32_t RFmodeLastCycled = 0;
 uint32_t RFmodeCycleInterval = 1000;
+
+uint32_t LEDLastCycled = 0;
+uint32_t LEDCycleInterval = 1000;
 
 uint8_t testdata[7] = {1, 2, 3, 4, 5, 6, 7};
 
@@ -587,9 +598,6 @@ void loop()
                 Radio.SetFrequency(GetInitialFreq());
             }
 
-            digitalWrite(GPIO_PIN_LED, LED);
-            LED = !LED;
-
             if (scanIndex == 3)
             {
                 scanIndex = 1;
@@ -606,7 +614,7 @@ void loop()
             if (!LostConnection)
             {
                 LostConnection = true;
-                digitalWrite(GPIO_PIN_LED, 0);
+                UpdateLEDState(true);
             }
         }
 
@@ -619,7 +627,7 @@ void loop()
         {
             LostConnection = true;
             RFmodeCycleInterval = 1000;
-            digitalWrite(GPIO_PIN_LED, 0);
+            UpdateLEDState(true);
         }
     }
     else
@@ -712,12 +720,6 @@ void loop()
     // Serial.println(packetCounter);
     // delay(200);
 
-    if (millis() > (buttonLastSampled + buttonSampleInterval))
-    {
-        sampleButton();
-        buttonLastSampled = millis();
-    }
-
     //yield();
 #ifdef PLATFORM_STM32
 #else
@@ -732,6 +734,14 @@ void loop()
         }
     }
 #endif
+
+button.Sample();
+if (button.IsPressed()) {
+    button.Reset();
+    EnterBindingMode();
+}
+
+UpdateLEDState();
 }
 
 void PrintMac()
@@ -759,9 +769,9 @@ void EnterBindingMode()
     // Radio.RXnb();
 
     // Use binding cipher and addr
-    TxBaseMac[3] = BindingBaseMac[3];
-    TxBaseMac[4] = BindingBaseMac[4];
-    TxBaseMac[5] = BindingBaseMac[5];
+    // TxBaseMac[3] = BindingBaseMac[3];
+    // TxBaseMac[4] = BindingBaseMac[4];
+    // TxBaseMac[5] = BindingBaseMac[5];
     CRCCaesarCipher = BindingCipher;
     DeviceAddr = BindingAddr;
 
@@ -805,7 +815,7 @@ void ExitBindingMode()
     Radio.SetFrequency(GetInitialFreq());
 
     InBindingMode = false;
-    LostConnection = true;
+    LostConnection = false;
 
     Serial.println("=== Binding successful ===");
     PrintMac();
@@ -829,5 +839,36 @@ void CancelBindingMode()
     InBindingMode = false;
 
     Serial.println("=== Binding mode cancelled ===");
-    //PrintMac();
+    PrintMac();
+}
+
+void UpdateLEDState(bool forceOff)
+{
+    if (forceOff) {
+        LED = false;
+        digitalWrite(GPIO_PIN_LED, LED);
+        return;
+    }
+
+    if (!InBindingMode && !LostConnection && !webUpdateMode) {
+        LED = true;
+        digitalWrite(GPIO_PIN_LED, LED);
+        return;
+    }
+    
+    if (InBindingMode) {
+        LEDCycleInterval = LED_BINDING_INTERVAL;
+    }
+    else if (LostConnection) {
+        LEDCycleInterval = LED_DISCONNECTED_INTERVAL;
+    }
+    else if (webUpdateMode) {
+        LEDCycleInterval = LED_WEB_UPDATE_INTERVAL;
+    }
+
+    if (millis() > (LEDLastCycled + LEDCycleInterval)) {
+        LED = !LED;
+        digitalWrite(GPIO_PIN_LED, LED);
+        LEDLastCycled = millis();
+    }
 }
