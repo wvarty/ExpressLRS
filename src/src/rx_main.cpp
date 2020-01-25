@@ -31,6 +31,10 @@ uint32_t ICACHE_RAM_ATTR HWtimerGetlastCallbackMicros90();
 void ICACHE_RAM_ATTR HWtimerPhaseShift(int16_t Offset);
 uint32_t ICACHE_RAM_ATTR HWtimerGetIntervalMicros();
 
+bool InBindingMode = false;
+void EnterBindingMode();
+void ExitBindingMode();
+
 uint8_t scanIndex = 1;
 
 uint8_t prevAirRate = 0;
@@ -114,6 +118,10 @@ void ICACHE_RAM_ATTR getRFlinkInfo()
 
 void ICACHE_RAM_ATTR HandleFHSS()
 {
+    if (FreqLocked) {
+        return;
+    }
+    
     uint8_t modresult = (NonceRXlocal + 1) % ExpressLRS_currAirRate.FHSShopInterval;
 
     if (modresult == 0)
@@ -128,7 +136,7 @@ void ICACHE_RAM_ATTR HandleFHSS()
 
 void ICACHE_RAM_ATTR HandleSendTelemetryResponse()
 {
-    if (ExpressLRS_currAirRate.TLMinterval > 0)
+    if (ExpressLRS_currAirRate.TLMinterval > 0 && !InBindingMode)
     {
         uint8_t modresult = (NonceRXlocal + 1) % ExpressLRS_currAirRate.TLMinterval;
 
@@ -144,9 +152,11 @@ void ICACHE_RAM_ATTR HandleSendTelemetryResponse()
             uint8_t crc = CalcCRC(Radio.TXdataBuffer, 7) + CRCCaesarCipher;
             Radio.TXdataBuffer[7] = crc;
             Radio.TXnb(Radio.TXdataBuffer, 8);
-            crsf.sendLinkStatisticsToFC();
+            //crsf.sendLinkStatisticsToFC();
             // Serial.println("TLM");
             addPacketToLQ(); // Adds packet to LQ otherwise an artificial drop in LQ is seen due to sending TLM.
+
+            Serial.println("=== SENDING TLM ===");
         }
     }
 }
@@ -178,6 +188,7 @@ void ICACHE_RAM_ATTR Test90()
     }
     else
     {
+        
         HandleSendTelemetryResponse();
     }
 
@@ -271,8 +282,29 @@ void ICACHE_RAM_ATTR ProcessRFPacket()
     // Serial.println(calculatedCRC);
     if (inCRC == calculatedCRC)
     {
+    }
+    else
+    {
+        Serial.println("crc failed");
+        Serial.print(calculatedCRC);
+        Serial.print(" != ");
+        Serial.println(inCRC);
+        CRCerrorCounter++;
+
+        Serial.println(Radio.RXdataBuffer[4]);
+         Serial.println(Radio.RXdataBuffer[5]);
+         Serial.println(Radio.RXdataBuffer[6]);
+         return;
+    }
+
         if (packetAddr == DeviceAddr)
         {
+        }
+        else
+        {
+            Serial.println("wrong address");
+            return;
+        }
             packetCounter++;
             addPacketToLQ();
             getRFlinkInfo(); // run if CRC and addr is valid
@@ -293,7 +325,7 @@ void ICACHE_RAM_ATTR ProcessRFPacket()
             if (type == 0b00) //std 4 channel switch data
             {
                 UnpackChannelData_11bit();
-                crsf.sendRCFrameToFC();
+                //crsf.sendRCFrameToFC();
             }
 
             if (type == 0b01)
@@ -305,7 +337,7 @@ void ICACHE_RAM_ATTR ProcessRFPacket()
                     UnpackSwitchData();
                     NonceRXlocal = Radio.RXdataBuffer[5];
                     FHSSsetCurrIndex(Radio.RXdataBuffer[6]);
-                    crsf.sendRCFrameToFC();
+                    //crsf.sendRCFrameToFC();
                 }
             }
 
@@ -316,10 +348,28 @@ void ICACHE_RAM_ATTR ProcessRFPacket()
 
             if (type == 0b10)
             {
+                // Serial.println(Radio.RXdataBuffer[0]);
+                // Serial.println(Radio.RXdataBuffer[1]);
+                // Serial.println(Radio.RXdataBuffer[2]);
+                // Serial.println(Radio.RXdataBuffer[3]);
+                // Serial.println(Radio.RXdataBuffer[4]);
+                // Serial.println(Radio.RXdataBuffer[5]);
+                // Serial.println(Radio.RXdataBuffer[6]);
+                // Serial.println(TxBaseMac[3]);
+                // Serial.println(TxBaseMac[4]);
+                // Serial.println(TxBaseMac[5]);
+
+                if (InBindingMode) {
+                    ExitBindingMode();
+                    return;
+                }
+
                 if (Radio.RXdataBuffer[4] == TxBaseMac[3] && Radio.RXdataBuffer[5] == TxBaseMac[4] && Radio.RXdataBuffer[6] == TxBaseMac[5])
                 {
                     { //sync packet from master
                         Serial.println("Sync Packet");
+
+                        
 
                         FHSSsetCurrIndex(Radio.RXdataBuffer[1]);
 
@@ -364,20 +414,10 @@ void ICACHE_RAM_ATTR ProcessRFPacket()
             //     HandleSendTelemetryResponse();
             //     alreadyTLMresp = true;
             // }
-        }
-        else
-        {
-            Serial.println("wrong address");
-        }
-    }
-    else
-    {
-        Serial.println("crc failed");
-        //Serial.print(calculatedCRC);
-        //Serial.print("-");
-        //Serial.println(inCRC);
-        CRCerrorCounter++;
-    }
+        
+        
+    
+    
 }
 
 void beginWebsever()
@@ -441,8 +481,8 @@ void setup()
 #ifdef PLATFORM_STM32
     Serial.setTx(GPIO_PIN_RCSIGNAL_TX);
     Serial.setRx(GPIO_PIN_RCSIGNAL_RX);
-    Serial.begin(420000);
-    //Serial.begin(115200);
+    // Serial.begin(420000);
+    Serial.begin(115200);
     crsf.InitSerial();
 #endif
 
@@ -499,6 +539,8 @@ void setup()
     InitHarwareTimer();
     SetRFLinkRate(RF_RATE_200HZ);
     Serial.println(GetInitialFreq());
+
+    EnterBindingMode();
 }
 
 void loop()
@@ -519,28 +561,30 @@ void loop()
             //StopHWtimer();
             Radio.RXnb();
             Beta = 1;
+            if (!FreqLocked) {
             switch (scanIndex)
             {
             case 1:
                 SetRFLinkRate(RF_RATE_200HZ);
-                Radio.SetFrequency(GetInitialFreq());
                 Serial.println("200 Hz");
                 //delay(1000);
                 break;
             case 2:
                 SetRFLinkRate(RF_RATE_100HZ);
-                Radio.SetFrequency(GetInitialFreq());
                 Serial.println("100 Hz");
                 //delay(1000);
                 break;
             case 3:
                 SetRFLinkRate(RF_RATE_50HZ);
-                Radio.SetFrequency(GetInitialFreq());
                 Serial.println("50 Hz");
                 //delay(1000);
                 break;
             default:
                 break;
+            }
+
+            
+                Radio.SetFrequency(GetInitialFreq());
             }
 
             digitalWrite(GPIO_PIN_LED, LED);
@@ -688,4 +732,102 @@ void loop()
         }
     }
 #endif
+}
+
+void PrintMac()
+{
+    Serial.print("MAC = ");
+    Serial.print(TxBaseMac[3]);
+    Serial.print(TxBaseMac[4]);
+    Serial.println(TxBaseMac[5]);
+    Serial.print("DEV ADDR = ");
+    Serial.println(DeviceAddr);
+    Serial.print("CRCCaesarCipher = ");
+    Serial.println(CRCCaesarCipher);
+}
+
+void EnterBindingMode()
+{
+    if (InBindingMode) {
+        // Don't enter binding if we're already connected or binding
+        return;
+    }
+
+    // Lock the RF rate and freq to the base freq while binding
+    // SetRFLinkRate(RF_RATE_100HZ);
+    // Radio.SetFrequency(FHSSGetBindingFreq());
+    // Radio.RXnb();
+
+    // Use binding cipher and addr
+    TxBaseMac[3] = BindingBaseMac[3];
+    TxBaseMac[4] = BindingBaseMac[4];
+    TxBaseMac[5] = BindingBaseMac[5];
+    CRCCaesarCipher = BindingCipher;
+    DeviceAddr = BindingAddr;
+
+    FHSSrandomiseFHSSsequence();
+    // Radio.Begin();
+    //Radio.SetFrequency(GetInitialFreq()); //set frequency first or an error will occur!!!
+    // Radio.SetOutputPower(0b1111);
+    // SetRFLinkRate(RF_RATE_200HZ);
+    SetRFLinkRate(RF_RATE_200HZ);
+    Serial.println(GetInitialFreq());
+
+    Radio.SetFrequency(919100000);
+    FreqLocked = true;
+
+    InBindingMode = true;
+    LostConnection = true;
+
+    Serial.println("=== Entered binding mode ===");
+    PrintMac();
+}
+
+void ExitBindingMode()
+{
+    if (!InBindingMode) {
+        // Not in binding mode
+        return;
+    }
+
+    // Read MAC data from TX
+    TxBaseMac[3] = Radio.RXdataBuffer[4];
+    TxBaseMac[4] = Radio.RXdataBuffer[5];
+    TxBaseMac[5] = Radio.RXdataBuffer[6];
+    CRCCaesarCipher = TxBaseMac[4];
+    DeviceAddr = TxBaseMac[5] & 0b111111;
+    //WriteMacToFlash();
+
+    // Randomise the FHSS seq using the new MAC addr
+    // and start at the initial freq
+    FHSSrandomiseFHSSsequence();
+    FreqLocked = false;
+    Radio.SetFrequency(GetInitialFreq());
+
+    InBindingMode = false;
+    LostConnection = true;
+
+    Serial.println("=== Binding successful ===");
+    PrintMac();
+}
+
+void CancelBindingMode()
+{
+    if (!InBindingMode) {
+        // Not in binding mode
+        return;
+    }
+
+    // Binding cancelled
+    //ReadMacFromFlash();
+
+    // Revert to original cipher and addr
+    CRCCaesarCipher = TxBaseMac[4];
+    DeviceAddr = TxBaseMac[5] & 0b111111;
+
+    LostConnection = true;
+    InBindingMode = false;
+
+    Serial.println("=== Binding mode cancelled ===");
+    //PrintMac();
 }
