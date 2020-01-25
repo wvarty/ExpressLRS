@@ -1,4 +1,4 @@
-#include "..\..\src\targets.h"
+#include "../../src/targets.h"
 #include "CRSF.h"
 #include <Arduino.h>
 #include "HardwareSerial.h"
