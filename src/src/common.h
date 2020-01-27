@@ -9,22 +9,17 @@
 
 #define One_Bit_Switches
 
-//uint8_t TxBaseMac[6] = {48, 174, 164, 200, 100, 50};
-
 // uint8_t TxBaseMac[6] = {48, 174, 164, 200, 100, 50};
 // uint8_t TxBaseMac[6] = {36, 111, 40, 158, 122, 220};
-
 //uint8_t TxBaseMac[6] = {180, 230, 45, 152, 125, 173}; // Wez's MAC
 
 uint8_t TxBaseMac[6] = {0, 0, 0, 0, 0, 0};
-
-// uint8_t BindingBaseMac[6] = {48, 174, 164, 200, 12, 34};
 
 uint8_t CRCCaesarCipher = TxBaseMac[4];
 uint8_t DeviceAddr = TxBaseMac[5] & 0b111111; // temporarily based on mac until listen before assigning method merged
 
 uint8_t BindingCipher = 100;
-uint8_t BindingAddr = 50 & 0b111111; // temporarily based on mac until listen before assigning method merged
+uint8_t BindingAddr = 50 & 0b111111;
 
 bool FreqLocked = false;
 
@@ -75,3 +70,5 @@ expresslrs_mod_settings_s ExpressLRS_prevAirRate;
 
 int8_t ExpressLRS_currPower = 0;
 int8_t ExpressLRS_prevPower = 0;
+
+#define ALLOW_BIND_WHEN_CONNECTED false
