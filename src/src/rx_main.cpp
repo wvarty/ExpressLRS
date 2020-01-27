@@ -1,5 +1,4 @@
 #include <Arduino.h>
-#include <EEPROM.h>
 #include "targets.h"
 #include "utils.h"
 #include "common.h"
@@ -9,7 +8,11 @@
 #include "debug.h"
 #include "rx_LinkQuality.h"
 #ifdef PLATFORM_ESP8266
+#include <EEPROM.h>
 #include "ESP8266_WebUpdate.h"
+#endif
+#ifdef PLATFORM_STM32
+#include "../lib/Arduino_Core_STM32-master/libraries/EEPROM/src/EEPROM.h"
 #endif
 #include "button.h"
 
@@ -433,7 +436,9 @@ void ICACHE_RAM_ATTR SetRFLinkRate(expresslrs_mod_settings_s mode) // Set speed 
 void setup()
 {
     // Read bound MAC addr from flash
+#ifdef PLATFORM_ESP8266
     EEPROM.begin(3);
+#endif
     ReadMacFromFlash();
     CRCCaesarCipher = TxBaseMac[4];
     DeviceAddr = TxBaseMac[5] & 0b111111;
@@ -767,23 +772,43 @@ void ReadMacFromFlash()
 {
     uint8_t readAddress = 0;
 
+#ifdef PLATFORM_ESP8266
     EEPROM.get(readAddress, TxBaseMac[3]);
     readAddress += sizeof(TxBaseMac[3]);
     EEPROM.get(readAddress, TxBaseMac[4]);
     readAddress += sizeof(TxBaseMac[4]);
     EEPROM.get(readAddress, TxBaseMac[5]);
+#endif
+
+#ifdef PLATFORM_STM32
+    TxBaseMac[3] = EEPROM.read(readAddress);
+    readAddress += sizeof(uint8_t);
+    TxBaseMac[4] = EEPROM.read(readAddress);
+    readAddress += sizeof(uint8_t);
+    TxBaseMac[5] = EEPROM.read(readAddress);
+#endif
 }
 
 void WriteMacToFlash()
 {
     uint8_t writeAddress = 0;
 
+#ifdef PLATFORM_ESP8266
     EEPROM.put(writeAddress, TxBaseMac[3]);
     writeAddress += sizeof(TxBaseMac[3]);
     EEPROM.put(writeAddress, TxBaseMac[4]);
     writeAddress += sizeof(TxBaseMac[4]);
     EEPROM.put(writeAddress, TxBaseMac[5]);
     EEPROM.commit();
+#endif
+
+#ifdef PLATFORM_STM32
+    EEPROM.write(writeAddress, TxBaseMac[3]);
+    writeAddress += sizeof(uint8_t);
+    EEPROM.write(writeAddress, TxBaseMac[4]);
+    writeAddress += sizeof(uint8_t);
+    EEPROM.write(writeAddress, TxBaseMac[5]);
+#endif
 }
 
 
