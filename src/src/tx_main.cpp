@@ -9,8 +9,6 @@
 #include "debug.h"
 #include "targets.h"
 
-String DebugOutput;
-
 /// define some libs to use ///
 SX127xDriver Radio;
 CRSF crsf;
@@ -19,6 +17,8 @@ bool InBindingMode = false;
 void EnterBindingMode();
 void ExitBindingMode();
 void CancelBindingMode();
+void PrintMac();
+void UpdateConnectionState(connectionState_e state);
 
 //// Switch Data Handling ///////
 uint8_t SwitchPacketsCounter = 0;             //not used for the moment
@@ -32,7 +32,6 @@ uint32_t SyncPacketLastSent = 0;
 
 uint32_t LastTLMpacketRecvMillis = 0;
 uint32_t RXconnectionLostTimeout = 1500; //After 1500ms of no TLM response consider that slave has lost connection
-bool isRXconnected = false;
 int packetCounteRX_TX = 0;
 uint32_t PacketRateLastChecked = 0;
 uint32_t PacketRateInterval = 500;
@@ -70,8 +69,6 @@ uint8_t LinkSpeedIncreaseSNR = 60; //if the SNR (times 10) is higher than this w
 void ICACHE_RAM_ATTR IncreasePower();
 void ICACHE_RAM_ATTR DecreasePower();
 
-uint8_t baseMac[6];
-
 void ICACHE_RAM_ATTR ProcessTLMpacket()
 {
   uint8_t calculatedCRC = CalcCRC(Radio.RXdataBuffer, 7) + CRCCaesarCipher;
@@ -82,46 +79,38 @@ void ICACHE_RAM_ATTR ProcessTLMpacket()
 
   //DEBUG_PRINTLN("TLMpacket0");
 
-  if (packetAddr == DeviceAddr)
-  {
-    if ((inCRC == calculatedCRC))
-    {
-      packetCounteRX_TX++;
-      if (type == 0b11) //tlmpacket
-      {
-        //DEBUG_PRINTLN("TLMpacket1");
-        //DEBUG_PRINTLN(type);
-        isRXconnected = true;
-        LastTLMpacketRecvMillis = millis();
-
-        if (TLMheader == CRSF_FRAMETYPE_LINK_STATISTICS)
-        {
-          crsf.LinkStatistics.uplink_RSSI_1 = Radio.RXdataBuffer[2];
-          crsf.LinkStatistics.uplink_RSSI_2 = 0;
-          crsf.LinkStatistics.uplink_SNR = Radio.RXdataBuffer[4];
-          crsf.LinkStatistics.uplink_Link_quality = Radio.RXdataBuffer[5];
-
-          crsf.LinkStatistics.downlink_SNR = int(Radio.LastPacketSNR * 10);
-          crsf.LinkStatistics.downlink_RSSI = 120 + Radio.LastPacketRSSI;
-          crsf.LinkStatistics.downlink_Link_quality = linkQuality;
-          //crsf.LinkStatistics.downlink_Link_quality = Radio.currPWR;
-          crsf.sendLinkStatisticsToTX();
-        }
-      }
-      else
-      {
-        DEBUG_PRINTLN("TLM type error");
-        DEBUG_PRINTLN(type);
-      }
-    }
-    else
-    {
-      DEBUG_PRINTLN("TLM crc error");
-    }
-  }
-  else
-  {
+  if (packetAddr != DeviceAddr) {
     DEBUG_PRINTLN("TLM dev addr");
+  }
+
+  if (inCRC != calculatedCRC) {
+    DEBUG_PRINTLN("TLM crc error");
+  }
+
+  packetCounteRX_TX++;
+  
+  if (type != TLM_PACKET) {
+    DEBUG_PRINTLN("TLM type error");
+    DEBUG_PRINTLN(type);
+  }
+
+  //DEBUG_PRINTLN("TLMpacket1");
+  //DEBUG_PRINTLN(type);
+  UpdateConnectionState(connected);
+  LastTLMpacketRecvMillis = millis();
+
+  if (TLMheader == CRSF_FRAMETYPE_LINK_STATISTICS)
+  {
+    crsf.LinkStatistics.uplink_RSSI_1 = Radio.RXdataBuffer[2];
+    crsf.LinkStatistics.uplink_RSSI_2 = 0;
+    crsf.LinkStatistics.uplink_SNR = Radio.RXdataBuffer[4];
+    crsf.LinkStatistics.uplink_Link_quality = Radio.RXdataBuffer[5];
+
+    crsf.LinkStatistics.downlink_SNR = int(Radio.LastPacketSNR * 10);
+    crsf.LinkStatistics.downlink_RSSI = 120 + Radio.LastPacketRSSI;
+    crsf.LinkStatistics.downlink_Link_quality = linkQuality;
+    //crsf.LinkStatistics.downlink_Link_quality = Radio.currPWR;
+    crsf.sendLinkStatisticsToTX();
   }
 }
 
@@ -204,8 +193,7 @@ void SetRFLinkRate(expresslrs_mod_settings_s mode) // Set speed of RF link (hz)
   ExpressLRS_prevAirRate = ExpressLRS_currAirRate;
   ExpressLRS_currAirRate = mode;
   crsf.RequestedRCpacketInterval = ExpressLRS_currAirRate.interval;
-  DebugOutput += String(mode.rate) + "Hz";
-  isRXconnected = false;
+  UpdateConnectionState(disconnected);
 }
 
 void ICACHE_RAM_ATTR HandleFHSS()
@@ -264,7 +252,7 @@ void ICACHE_RAM_ATTR SendRCdataToRF()
 
   uint32_t SyncInterval;
 
-  if (isRXconnected)
+  if (connectionState == connected)
   {
     SyncInterval = SyncPacketSendIntervalRXconn;
   }
@@ -423,6 +411,7 @@ void setup()
   strip.Show();
 
   // Get base mac address
+  uint8_t baseMac[6];
   esp_read_mac(baseMac, ESP_MAC_WIFI_STA);
 
   pinMode(4, INPUT_PULLUP);
@@ -512,20 +501,20 @@ void loop()
   DEBUG_PRINTLN(crsf.OpenTXsyncOffset);
 #endif
 
-  //updateLEDs(isRXconnected, ExpressLRS_currAirRate.TLMinterval);
+  //updateLEDs(connectionState == connected, ExpressLRS_currAirRate.TLMinterval);
 
   if (millis() > (RXconnectionLostTimeout + LastTLMpacketRecvMillis))
   {
-    isRXconnected = false;
+    UpdateConnectionState(disconnected);
   }
   else
   {
-    isRXconnected = true;
+    UpdateConnectionState(connected);
   }
 
   //if (millis() > (PacketRateLastChecked + PacketRateInterval)//just some debug data
   //{
-  // if (isRXconnected)
+  // if (connectionState == connected)
   // {
   //   if ((Radio.RXdataBuffer[2] < 30 || Radio.RXdataBuffer[4] < 10))
   //   {
@@ -539,7 +528,7 @@ void loop()
   // }
 
   // TODO: Remove this once binding works
-  // if (millis() > 10000 && millis() < 11000 && !isRXconnected) {
+  // if (millis() > 10000 && millis() < 11000 && connectionState == disconnected) {
   //   EnterBindingMode();
   // }
   // if (millis() > 12000) {
@@ -572,7 +561,7 @@ void PrintMac()
 
 void EnterBindingMode()
 {
-    if ((PREVENT_BIND_WHEN_CONNECTED && isRXconnected) || InBindingMode) {
+    if ((PREVENT_BIND_WHEN_CONNECTED && connectionState == connected) || InBindingMode) {
         // Don't enter binding if:
         // - we're already connected
         // - we're already binding
@@ -590,7 +579,7 @@ void EnterBindingMode()
     FreqLocked = true;
 
     InBindingMode = true;
-    isRXconnected = false;
+    UpdateConnectionState(disconnected);
 
     DEBUG_PRINTLN("=== Entered binding mode ===");
     PrintMac();
@@ -616,7 +605,7 @@ void ExitBindingMode()
   Radio.SetFrequency(GetInitialFreq());
 
   InBindingMode = false;
-  isRXconnected = false;
+  UpdateConnectionState(disconnected);
 
   DEBUG_PRINTLN("=== Binding successful ===");
   PrintMac();
@@ -643,12 +632,18 @@ void CancelBindingMode()
 
   // Binding cancelled
   // Go to a disconnected state
-  isRXconnected = false;
   InBindingMode = false;
+  UpdateConnectionState(disconnected);
 
   DEBUG_PRINTLN("=== Binding mode cancelled ===");
   PrintMac();
 
   for(int n = 0; n < 3; n++) strip.SetPixelColor(n, RgbColor(255, 0, 0));
   strip.Show();
+}
+
+void UpdateConnectionState(connectionState_e state)
+{
+    connectionStatePrev = connectionState;
+    connectionState = state;
 }
