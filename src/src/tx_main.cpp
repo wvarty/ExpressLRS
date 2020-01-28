@@ -6,7 +6,7 @@
 #include "CRSF.h"
 #include "FHSS.h"
 #include "LED.h"
-#include "Debug.h"
+#include "debug.h"
 #include "targets.h"
 
 String DebugOutput;
@@ -14,6 +14,11 @@ String DebugOutput;
 /// define some libs to use ///
 SX127xDriver Radio;
 CRSF crsf;
+
+bool InBindingMode = false;
+void EnterBindingMode();
+void ExitBindingMode();
+void CancelBindingMode();
 
 //// Switch Data Handling ///////
 uint8_t SwitchPacketsCounter = 0;             //not used for the moment
@@ -69,14 +74,13 @@ uint8_t baseMac[6];
 
 void ICACHE_RAM_ATTR ProcessTLMpacket()
 {
-
   uint8_t calculatedCRC = CalcCRC(Radio.RXdataBuffer, 7) + CRCCaesarCipher;
   uint8_t inCRC = Radio.RXdataBuffer[7];
   uint8_t type = Radio.RXdataBuffer[0] & 0b11;
   uint8_t packetAddr = (Radio.RXdataBuffer[0] & 0b11111100) >> 2;
   uint8_t TLMheader = Radio.RXdataBuffer[1];
 
-  //Serial.println("TLMpacket0");
+  //DEBUG_PRINTLN("TLMpacket0");
 
   if (packetAddr == DeviceAddr)
   {
@@ -85,8 +89,8 @@ void ICACHE_RAM_ATTR ProcessTLMpacket()
       packetCounteRX_TX++;
       if (type == 0b11) //tlmpacket
       {
-        //Serial.println("TLMpacket1");
-        //Serial.println(type);
+        //DEBUG_PRINTLN("TLMpacket1");
+        //DEBUG_PRINTLN(type);
         isRXconnected = true;
         LastTLMpacketRecvMillis = millis();
 
@@ -106,18 +110,18 @@ void ICACHE_RAM_ATTR ProcessTLMpacket()
       }
       else
       {
-        Serial.println("TLM type error");
-        Serial.println(type);
+        DEBUG_PRINTLN("TLM type error");
+        DEBUG_PRINTLN(type);
       }
     }
     else
     {
-      Serial.println("TLM crc error");
+      DEBUG_PRINTLN("TLM crc error");
     }
   }
   else
   {
-    Serial.println("TLM dev addr");
+    DEBUG_PRINTLN("TLM dev addr");
   }
 }
 
@@ -206,6 +210,10 @@ void SetRFLinkRate(expresslrs_mod_settings_s mode) // Set speed of RF link (hz)
 
 void ICACHE_RAM_ATTR HandleFHSS()
 {
+  if (FreqLocked) {
+    return;
+  }
+  
   uint8_t modresult = (Radio.NonceTX) % ExpressLRS_currAirRate.FHSShopInterval;
 
   if (modresult == 0) // if it time to hop, do so.
@@ -265,15 +273,15 @@ void ICACHE_RAM_ATTR SendRCdataToRF()
     SyncInterval = SyncPacketSendIntervalRXlost;
   }
 
-  //if (((millis() > (SyncPacketLastSent + SyncInterval)) && (Radio.currFreq == GetInitialFreq())) || ChangeAirRateRequested) //only send sync when its time and only on channel 0;
-  if ((millis() > (SyncPacketLastSent + SyncInterval)) && (Radio.currFreq == GetInitialFreq()))
+  //if (((millis() > (SyncPacketLastSent + SyncInterval)) && (Radio.currFreq == GetInitialFreq())) || ChangeAirRateRequested) //only send sync when its time and only on channel 0;+
+  if ((millis() > (SyncPacketLastSent + SyncInterval)) && (Radio.currFreq == GetInitialFreq() || InBindingMode))
   {
 
     GenerateSyncPacketData();
     SyncPacketLastSent = millis();
     ChangeAirRateSentUpdate = true;
-    //Serial.println("sync");
-    //Serial.println(Radio.currFreq);
+    //DEBUG_PRINTLN("sync");
+    //DEBUG_PRINTLN(Radio.currFreq);
   }
   else
   {
@@ -329,37 +337,37 @@ void ICACHE_RAM_ATTR HandleUpdateParameter()
       case 0:
         Radio.maxPWR = 0b1111;
         //Radio.SetOutputPower(0b1111); // 500 mW
-        Serial.println("Setpower 500 mW");
+        DEBUG_PRINTLN("Setpower 500 mW");
         break;
 
       case 1:
         //Radio.maxPWR = 0b1000;
         //Radio.SetOutputPower(0b1111);
-        Serial.println("Setpower 200 mW");
+        DEBUG_PRINTLN("Setpower 200 mW");
         break;
 
       case 2:
         //Radio.maxPWR = 0b1000;
         //Radio.SetOutputPower(0b1000);
-        Serial.println("Setpower 100 mW");
+        DEBUG_PRINTLN("Setpower 100 mW");
         break;
 
       case 3:
         //Radio.maxPWR = 0b0101;
         //Radio.SetOutputPower(0b0101);
-        Serial.println("Setpower 50 mW");
+        DEBUG_PRINTLN("Setpower 50 mW");
         break;
 
       case 4:
         //Radio.maxPWR = 0b0010;
         //Radio.SetOutputPower(0b0010);
-        Serial.println("Setpower 25 mW");
+        DEBUG_PRINTLN("Setpower 25 mW");
         break;
 
       case 5:
         Radio.maxPWR = 0b0000;
         //Radio.SetOutputPower(0b0000);
-        Serial.println("Setpower Pit");
+        DEBUG_PRINTLN("Setpower Pit");
         break;
 
       default:
@@ -400,7 +408,7 @@ void DetectOtherRadios()
 
   // if (Radio.RXsingle(RXdata, 7, 2 * (RF_RATE_50HZ.interval / 1000)) == ERR_NONE)
   // {
-  //   Serial.println("got fastsync resp 1");
+  //   DEBUG_PRINTLN("got fastsync resp 1");
   //   break;
   // }
 }
@@ -408,9 +416,11 @@ void DetectOtherRadios()
 void setup()
 {
   Serial.begin(115200);
-  Serial.println("ExpressLRS TX Module Booted...");
+  DEBUG_PRINTLN("ExpressLRS TX Module Booted...");
 
   strip.Begin();
+  for(int n = 0; n < 3; n++) strip.SetPixelColor(n, RgbColor(255, 0, 0));
+  strip.Show();
 
   // Get base mac address
   esp_read_mac(baseMac, ESP_MAC_WIFI_STA);
@@ -421,27 +431,27 @@ void setup()
   // Print base mac address
   // This should be copied to common.h and is used to generate a unique hop sequence, DeviceAddr, and CRC.
   // TxBaseMac[0..2] are OUI (organisationally unique identifier) and are not ESP32 unique.  Do not use!
-  Serial.println("");
-  Serial.println("Copy the below line into common.h.");
-  Serial.print("uint8_t TxBaseMac[6] = {");
-  Serial.print(baseMac[0]);
-  Serial.print(", ");
-  Serial.print(baseMac[1]);
-  Serial.print(", ");
-  Serial.print(baseMac[2]);
-  Serial.print(", ");
-  Serial.print(baseMac[3]);
-  Serial.print(", ");
-  Serial.print(baseMac[4]);
-  Serial.print(", ");
-  Serial.print(baseMac[5]);
-  Serial.println("};");
-  Serial.println("");
+  DEBUG_PRINTLN("");
+  DEBUG_PRINTLN("Copy the below line into common.h.");
+  DEBUG_PRINT("uint8_t TxBaseMac[6] = {");
+  DEBUG_PRINT(baseMac[0]);
+  DEBUG_PRINT(", ");
+  DEBUG_PRINT(baseMac[1]);
+  DEBUG_PRINT(", ");
+  DEBUG_PRINT(baseMac[2]);
+  DEBUG_PRINT(", ");
+  DEBUG_PRINT(baseMac[3]);
+  DEBUG_PRINT(", ");
+  DEBUG_PRINT(baseMac[4]);
+  DEBUG_PRINT(", ");
+  DEBUG_PRINT(baseMac[5]);
+  DEBUG_PRINTLN("};");
+  DEBUG_PRINTLN("");
 
   FHSSrandomiseFHSSsequence();
 
 #ifdef Regulatory_Domain_AU_915
-  Serial.println("Setting 915MHz Mode");
+  DEBUG_PRINTLN("Setting 915MHz Mode");
   Radio.RFmodule = RFMOD_SX1276; //define radio module here
 #ifdef TARGET_100mW_MODULE
   Radio.SetOutputPower(0b1111); // 20dbm = 100mW
@@ -454,7 +464,7 @@ void setup()
                                 // Radio.SetOutputPower(0b1111); // 30dbm = 1000mW
 #endif
 #elif defined Regulatory_Domain_AU_433
-  Serial.println("Setting 433MHz Mode");
+  DEBUG_PRINTLN("Setting 433MHz Mode");
   Radio.RFmodule = RFMOD_SX1278; //define radio module here
   Radio.SetOutputPower(0b1111);
 #endif
@@ -490,16 +500,16 @@ void loop()
 
   if (digitalRead(4) == 0)
   {
-    Serial.println("Switch Pressed!");
+    DEBUG_PRINTLN("Switch Pressed!");
   }
 
   if (digitalRead(36) == 0)
   {
-    Serial.println("Switch Pressed!");
+    DEBUG_PRINTLN("Switch Pressed!");
   }
 
 #ifdef FEATURE_OPENTX_SYNC
-  Serial.println(crsf.OpenTXsyncOffset);
+  DEBUG_PRINTLN(crsf.OpenTXsyncOffset);
 #endif
 
   //updateLEDs(isRXconnected, ExpressLRS_currAirRate.TLMinterval);
@@ -528,6 +538,14 @@ void loop()
   //   crsf.sendLinkStatisticsToTX();
   // }
 
+  // TODO: Remove this once binding works
+  // if (millis() > 10000 && millis() < 11000 && !isRXconnected) {
+  //   EnterBindingMode();
+  // }
+  // if (millis() > 12000) {
+  //   ExitBindingMode();
+  // }
+
   float targetFrameRate = (ExpressLRS_currAirRate.rate * (1.0 / ExpressLRS_currAirRate.TLMinterval));
   PacketRateLastChecked = millis();
   PacketRate = (float)packetCounteRX_TX / (float)(PacketRateInterval);
@@ -538,4 +556,99 @@ void loop()
     linkQuality = 99;
   }
   packetCounteRX_TX = 0;
+}
+
+void PrintMac()
+{
+    DEBUG_PRINT("MAC = ");
+    DEBUG_PRINT(TxBaseMac[3]);
+    DEBUG_PRINT(TxBaseMac[4]);
+    DEBUG_PRINTLN(TxBaseMac[5]);
+    DEBUG_PRINT("DEV ADDR = ");
+    DEBUG_PRINTLN(DeviceAddr);
+    DEBUG_PRINT("CRCCaesarCipher = ");
+    DEBUG_PRINTLN(CRCCaesarCipher);
+}
+
+void EnterBindingMode()
+{
+    if ((PREVENT_BIND_WHEN_CONNECTED && isRXconnected) || InBindingMode) {
+        // Don't enter binding if:
+        // - we're already connected
+        // - we're already binding
+        return;
+    }
+
+    // Use binding cipher and addr
+    CRCCaesarCipher = BindingCipher;
+    DeviceAddr = BindingAddr;
+
+    // Start attempting to bind
+    // Lock the RF rate and freq to the base freq while binding
+    SetRFLinkRate(RF_RATE_200HZ);
+    Radio.SetFrequency(919100000);
+    FreqLocked = true;
+
+    InBindingMode = true;
+    isRXconnected = false;
+
+    DEBUG_PRINTLN("=== Entered binding mode ===");
+    PrintMac();
+
+    for(int n = 0; n < 3; n++) strip.SetPixelColor(n, RgbColor(0, 0, 255));
+    strip.Show();
+}
+
+void ExitBindingMode()
+{
+  if (!InBindingMode) {
+    // Not in binding mode
+    return;
+  }
+
+  CRCCaesarCipher = TxBaseMac[4];
+  DeviceAddr = TxBaseMac[5] & 0b111111;
+
+  // Revert to original packet rate
+  // and go to initial freq
+  FreqLocked = false;
+  SetRFLinkRate(RF_RATE_200HZ);
+  Radio.SetFrequency(GetInitialFreq());
+
+  InBindingMode = false;
+  isRXconnected = false;
+
+  DEBUG_PRINTLN("=== Binding successful ===");
+  PrintMac();
+
+  for(int n = 0; n < 3; n++) strip.SetPixelColor(n, RgbColor(0, 255, 0));
+  strip.Show();
+}
+
+void CancelBindingMode()
+{
+  if (!InBindingMode) {
+    // Not in binding mode
+    return;
+  }
+
+  // Revert to original packet rate
+  // and go to initial freq
+  SetRFLinkRate(ExpressLRS_prevAirRate);
+  Radio.SetFrequency(GetInitialFreq());
+
+  // Revert to original cipher and addr
+  CRCCaesarCipher = TxBaseMac[4];
+  DeviceAddr = TxBaseMac[5] & 0b111111;
+
+  // Binding cancelled
+  // Go to a disconnected state
+  isRXconnected = false;
+  InBindingMode = false;
+
+  DEBUG_PRINTLN("=== Binding mode cancelled ===");
+  PrintMac();
+
+  for(int n = 0; n < 3; n++) strip.SetPixelColor(n, RgbColor(255, 0, 0));
+  strip.Show();
 }

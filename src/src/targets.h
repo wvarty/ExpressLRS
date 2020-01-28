@@ -28,6 +28,7 @@
 #define GPIO_PIN_RCSIGNAL_RX 13
 #define GPIO_PIN_RCSIGNAL_TX 13
 #define GPIO_PIN_BUTTON -1
+#define BUTTON_ACTIVE_HIGH true
 #endif
 
 #ifdef TARGET_TTGO_LORA_V1_AS_RX

@@ -86,9 +86,6 @@ int16_t Offset90;
 uint32_t SerialDebugPrintInterval = 250;
 uint32_t LastSerialDebugPrint = 0;
 
-uint32_t RFmodeLastCycled = 0;
-uint32_t RFmodeCycleInterval = 1000;
-
 uint32_t LEDLastCycled = 0;
 uint32_t LEDCycleInterval = 1000;
 
@@ -671,7 +668,7 @@ void EnterBindingMode()
     FreqLocked = true;
 
     InBindingMode = true;
-    LostConnection = true;
+    UpdateConnectionState(disconnected);
 
     DEBUG_PRINTLN("=== Entered binding mode ===");
     PrintMac();
@@ -793,7 +790,7 @@ void UpdateLEDState(bool forceOff)
     if (InBindingMode) {
         LEDCycleInterval = LED_BINDING_INTERVAL;
     }
-    else if (LostConnection && !webUpdateMode) {
+    else if (connectionState == disconnected && !webUpdateMode) {
         LEDCycleInterval = LED_DISCONNECTED_INTERVAL;
     }
     else if (webUpdateMode) {

@@ -81,4 +81,4 @@ expresslrs_mod_settings_s ExpressLRS_prevAirRate;
 int8_t ExpressLRS_currPower = 0;
 int8_t ExpressLRS_prevPower = 0;
 
-#define ALLOW_BIND_WHEN_CONNECTED false
+#define PREVENT_BIND_WHEN_CONNECTED true
