@@ -82,6 +82,7 @@ int8_t ExpressLRS_currPower = 0;
 int8_t ExpressLRS_prevPower = 0;
 
 #define PREVENT_BIND_WHEN_CONNECTED true
+#define USE_FLASH_FOR_MAC false // Set this to true if you MAC is stored in flash on the RX
 
 // expresslrs packet header types
 // 00 -> standard 4 channel data packet

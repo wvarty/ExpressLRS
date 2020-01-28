@@ -424,9 +424,11 @@ void setup()
 #ifdef PLATFORM_ESP8266
     EEPROM.begin(3);
 #endif
-    ReadMacFromFlash();
-    CRCCaesarCipher = TxBaseMac[4];
-    DeviceAddr = TxBaseMac[5] & 0b111111;
+    if (USE_FLASH_FOR_MAC) {
+        ReadMacFromFlash();
+        CRCCaesarCipher = TxBaseMac[4];
+        DeviceAddr = TxBaseMac[5] & 0b111111;
+    }
 
 #ifdef PLATFORM_STM32
     Serial.setTx(GPIO_PIN_RCSIGNAL_TX);
