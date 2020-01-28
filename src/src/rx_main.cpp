@@ -235,14 +235,14 @@ void ICACHE_RAM_ATTR LostConnection()
 
         UpdateLEDState(true); // turn off led
         Radio.SetFrequency(GetInitialFreq()); // in conn lost state we always want to listen on freq index 0
-        Serial.println("lost conn");
+        DEBUG_PRINTLN("lost conn");
     }
 }
 
 void ICACHE_RAM_ATTR TentativeConnection()
 {
     UpdateConnectionState(tentative);
-    Serial.println("tentative conn");
+    DEBUG_PRINTLN("tentative conn");
 }
 
 void ICACHE_RAM_ATTR GotConnection()
@@ -253,7 +253,7 @@ void ICACHE_RAM_ATTR GotConnection()
 
         RFmodeLastCycled = millis();   // give another 3 sec for loc to occur.
         UpdateLEDState(); // turn on led
-        Serial.println("got conn");
+        DEBUG_PRINTLN("got conn");
     }
 }
 
@@ -335,7 +335,7 @@ void ICACHE_RAM_ATTR ProcessRFPacket()
         break;
 
     case SWITCH_DATA_PACKET: // Switch Data Packet
-        //Serial.println("Switch Packet");
+        //DEBUG_PRINTLN("Switch Packet");
         if ((Radio.RXdataBuffer[3] == Radio.RXdataBuffer[1]) && (Radio.RXdataBuffer[4] == Radio.RXdataBuffer[2])) // extra layer of protection incase the crc and addr headers fail us.
         {
             //GotConnection();
@@ -345,7 +345,7 @@ void ICACHE_RAM_ATTR ProcessRFPacket()
             #ifndef DEBUG
             crsf.sendRCFrameToFC();
             #endif
-            //Serial.println("Switch Pkt");
+            //DEBUG_PRINTLN("Switch Pkt");
         }
         break;
 
@@ -373,7 +373,7 @@ void ICACHE_RAM_ATTR ProcessRFPacket()
 
             // if (ExpressLRS_currAirRate.enum_rate == !(expresslrs_RFrates_e)(Radio.RXdataBuffer[2] & 0b00001111))
             // {
-            //     Serial.println("update air rate");
+            //     DEBUG_PRINTLN("update air rate");
             //     SetRFLinkRate(ExpressLRS_AirRateConfig[Radio.RXdataBuffer[3]]);
             //     ExpressLRS_currAirRate = ExpressLRS_AirRateConfig[Radio.RXdataBuffer[3]];
             // }
@@ -399,12 +399,12 @@ void ICACHE_RAM_ATTR ProcessRFPacket()
         HandleFHSS();
         alreadyFHSS = true;
     }
-    // Serial.print("Offset: ");
-    // Serial.print(Offset);
-    // Serial.print(" LQ: ");
-    // Serial.println(linkQuality);
-    // Serial.print(":");
-    // Serial.println(PacketInterval);
+    // DEBUG_PRINT("Offset: ");
+    // DEBUG_PRINT(Offset);
+    // DEBUG_PRINT(" LQ: ");
+    // DEBUG_PRINTLN(linkQuality);
+    // DEBUG_PRINT(":");
+    // DEBUG_PRINTLN(PacketInterval);
 }
 
 void beginWebsever()
@@ -501,7 +501,7 @@ void loop()
             Radio.SetFrequency(GetInitialFreq());
             SetRFLinkRate(ExpressLRS_AirRateConfig[scanIndex % 3]); //switch between 200hz, 100hz, 50hz, rates
             LQreset();
-            Serial.println(ExpressLRS_currAirRate.interval);
+            DEBUG_PRINTLN(ExpressLRS_currAirRate.interval);
             scanIndex++;
         }
         RFmodeLastCycled = millis();
@@ -587,10 +587,10 @@ void loop()
     //     //DEBUG_PRINTLN(packetCounter);
     // }
 
-    // Serial.print(MeasuredHWtimerInterval);
-    // Serial.print(" ");
-    // Serial.print(" ");
-    // Serial.print(HWtimerError);
+    // DEBUG_PRINT(MeasuredHWtimerInterval);
+    // DEBUG_PRINT(" ");
+    // DEBUG_PRINT(" ");
+    // DEBUG_PRINT(HWtimerError);
 
     // DEBUG_PRINT("----");
 
@@ -600,10 +600,10 @@ void loop()
     // DEBUG_PRINT("----");
     // DEBUG_PRINTLN(packetCounter);
     // delay(200);
-    // Serial.print("LQ: ");
-    // Serial.print(linkQuality);
-    // Serial.print(" Connstate:");
-    // Serial.println(connectionState);
+    // DEBUG_PRINT("LQ: ");
+    // DEBUG_PRINT(linkQuality);
+    // DEBUG_PRINT(" Connstate:");
+    // DEBUG_PRINTLN(connectionState);
 
     //yield();
 
