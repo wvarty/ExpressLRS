@@ -5,7 +5,7 @@
 // #define Regulatory_Domain_AU_433
 
 // Wifi starts if no connection is found between 10 and 11 seconds after boot
-//#define Auto_WiFi_On_Boot
+#define Auto_WiFi_On_Boot
 
 #define One_Bit_Switches
 
@@ -13,9 +13,15 @@
 //uint8_t TxBaseMac[6] = {180, 230, 45, 152, 126, 65}; //sandro mac
 uint8_t TxBaseMac[6] = {180, 230, 45, 152, 125, 173}; // Wez's MAC
 
-uint8_t CRCCaesarCipher = TxBaseMac[4];
+// uint8_t TxBaseMac[6] = {0, 0, 0, 0, 0, 0};
 
+uint8_t CRCCaesarCipher = TxBaseMac[4];
 uint8_t DeviceAddr = TxBaseMac[5] & 0b111111; // temporarily based on mac until listen before assigning method merged
+
+uint8_t BindingCipher = 100;
+uint8_t BindingAddr = 50 & 0b111111;
+
+bool FreqLocked = false;
 
 typedef enum
 {
@@ -74,3 +80,5 @@ expresslrs_mod_settings_s ExpressLRS_prevAirRate;
 
 int8_t ExpressLRS_currPower = 0;
 int8_t ExpressLRS_prevPower = 0;
+
+#define ALLOW_BIND_WHEN_CONNECTED false
