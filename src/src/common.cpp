@@ -30,8 +30,11 @@ connectionState_e connectionStatePrev = disconnected;
 uint8_t TxBaseMac[6] = {180, 230, 45, 152, 125, 173}; // Wez's MAC
 
 uint8_t CRCCaesarCipher = TxBaseMac[4];
-
 uint8_t DeviceAddr = TxBaseMac[5] & 0b111111; // temporarily based on mac until listen before assigning method merged
+
+uint8_t BindingCipher = 100;
+uint8_t BindingAddr = 50 & 0b111111;
+bool FreqLocked = false;
 
 #define RSSI_FLOOR_NUM_READS 5 // number of times to sweep the noise foor to get avg. RSSI reading
 #define MEDIAN_SIZE 20
