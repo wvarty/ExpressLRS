@@ -106,6 +106,8 @@ https://github.com/jaxxzer
 #define GPIO_PIN_TX_ENABLE -1
 #define GPIO_PIN_OLED_SDA -1
 #define GPIO_PIN_OLED_SCK -1
+#define GPIO_PIN_EEPROM_SDA PB7
+#define GPIO_PIN_EEPROM_SCK PB6
 #define GPIO_PIN_RCSIGNAL_RX PA10
 #define GPIO_PIN_RCSIGNAL_TX PA9
 #define GPIO_PIN_LED PC1      // Red
