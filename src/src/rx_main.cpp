@@ -18,7 +18,6 @@
 #include "STM32_UARTinHandler.h"
 #endif
 
-#include "button.h"
 #include "errata.h"
 
 // LED blink rates for different modes
@@ -26,13 +25,17 @@
 #define LED_DISCONNECTED_INTERVAL 1000
 #define LED_WEB_UPDATE_INTERVAL 25
 
+// Button hold timespans for different modes
+#define BUTTON_BINDING_INTERVAL 100
+#define BUTTON_WEB_UPDATE_INTERVAL 2000
+#define BUTTON_RESET_INTERVAL 4000
+
 SX127xDriver Radio;
 CRSF crsf(Serial); //pass a serial port object to the class for it to use
-Button button;
 
 //Filters//
 LPF LPF_PacketInterval(3);
-LPF LPF_Offset(2);
+LPF LPF_Offset(3);
 LPF LPF_FreqError(3);
 LPF LPF_UplinkRSSI(5);
 
@@ -67,8 +70,8 @@ uint8_t scanIndex = 0;
 uint32_t MeasuredHWtimerInterval;
 int32_t HWtimerError;
 int32_t HWtimerError90;
-int16_t Offset;
-int16_t Offset90;
+int32_t Offset;
+int32_t Offset90;
 uint32_t SerialDebugPrintInterval = 250;
 uint32_t LastSerialDebugPrint = 0;
 
@@ -117,20 +120,19 @@ void ICACHE_RAM_ATTR getRFlinkInfo()
     crsf.PackedRCdataOut.ch15 = UINT10_to_CRSF(map(LastRSSI, -100, -50, 0, 1023));
     crsf.PackedRCdataOut.ch14 = UINT10_to_CRSF(fmap(linkQuality, 0, 100, 0, 1023));
 
-    crsf.LinkStatistics.uplink_RSSI_1 = LPF_UplinkRSSI.update(-(RFnoiseFloor - Radio.GetLastPacketRSSI()));
+    crsf.LinkStatistics.uplink_RSSI_1 = (LPF_UplinkRSSI.update(Radio.GetLastPacketRSSI()) + 130);
     crsf.LinkStatistics.uplink_RSSI_2 = 0;
     crsf.LinkStatistics.uplink_SNR = Radio.GetLastPacketSNR() * 10;
     crsf.LinkStatistics.uplink_Link_quality = linkQuality;
     crsf.LinkStatistics.rf_Mode = ExpressLRS_currAirRate.enum_rate;
 
-    #ifndef DEBUG
-    crsf.sendLinkStatisticsToFC();
-    #endif
+    //Serial.println(crsf.LinkStatistics.uplink_RSSI_1);
 }
 
 void ICACHE_RAM_ATTR HandleFHSS()
 {
-    if (FreqLocked) {
+    if (FreqLocked)
+    {
         return;
     }
     
@@ -143,6 +145,7 @@ void ICACHE_RAM_ATTR HandleFHSS()
         {
             Radio.SetFrequency(FHSSgetNextFreq());
             Radio.RXnb();
+            //crsf.sendLinkStatisticsToFC();
         }
     }
 }
@@ -269,7 +272,8 @@ void ICACHE_RAM_ATTR ProcessRFPacket()
     // DEBUG_PRINT(" = ");
     // DEBUG_PRINTLN(calculatedCRC);
 
-    if (inCRC != calculatedCRC) {
+    if (inCRC != calculatedCRC)
+    {
         DEBUG_PRINTLN("crc failed");
         DEBUG_PRINT(calculatedCRC);
         DEBUG_PRINT(" != ");
@@ -282,7 +286,8 @@ void ICACHE_RAM_ATTR ProcessRFPacket()
         return;
     }
 
-    if (packetAddr != DeviceAddr) {
+    if (packetAddr != DeviceAddr)
+    {
         DEBUG_PRINTLN("wrong address");
         return;
     }
@@ -309,9 +314,7 @@ void ICACHE_RAM_ATTR ProcessRFPacket()
             UnpackSwitchData();
             NonceRXlocal = Radio.RXdataBuffer[5];
             FHSSsetCurrIndex(Radio.RXdataBuffer[6]);
-            #ifndef DEBUG
             crsf.sendRCFrameToFC();
-            #endif
         }
         break;
 
@@ -321,7 +324,8 @@ void ICACHE_RAM_ATTR ProcessRFPacket()
         break;
 
     case SYNC_PACKET:
-        if (InBindingMode) {
+        if (InBindingMode)
+        {
             ExitBindingMode();
             return;
         }
@@ -434,7 +438,19 @@ void ICACHE_RAM_ATTR sampleButton()
         buttonDown = false;
     }
 
-    if ((millis() > buttonLastPressed + webUpdatePressInterval) && buttonDown) // button held down
+    if ((millis() > buttonLastPressed + BUTTON_BINDING_INTERVAL) && buttonDown)
+    {
+        if (!InBindingMode)
+        {
+            EnterBindingMode();
+        }
+        else
+        {
+            CancelBindingMode();
+        }
+    }
+
+    if ((millis() > buttonLastPressed + BUTTON_WEB_UPDATE_INTERVAL) && buttonDown) // button held down
     {
         if (!webUpdateMode)
         {
@@ -442,7 +458,7 @@ void ICACHE_RAM_ATTR sampleButton()
         }
     }
 
-    if ((millis() > buttonLastPressed + buttonResetInterval) && buttonDown)
+    if ((millis() > buttonLastPressed + BUTTON_RESET_INTERVAL) && buttonDown)
     {
         //ESP.restart();
         //Serial.println("Setting Bootloader Bit..");
@@ -469,7 +485,10 @@ void setup()
 #ifdef PLATFORM_ESP8266
     EEPROM.begin(3);
 #endif
-    if (USE_FLASH_FOR_MAC) {
+    if (USE_FLASH_FOR_MAC)
+    {
+        // Set USE_FLASH_FOR_MAC to true in common to enable binding
+        // Set to false to keep using hardcoded MAC addresses
         ReadMacFromFlash();
         CRCCaesarCipher = TxBaseMac[4];
         DeviceAddr = TxBaseMac[5] & 0b111111;
@@ -554,7 +573,7 @@ void loop()
 
     if ((millis() > (SendLinkStatstoFCintervalLastSent + SendLinkStatstoFCinterval)) && connectionState != disconnected)
     {
-        //crsf.sendLinkStatisticsToFC();
+        crsf.sendLinkStatisticsToFC();
         SendLinkStatstoFCintervalLastSent = millis();
     }
     // if (millis() > LastSerialDebugPrint + SerialDebugPrintInterval)
@@ -663,17 +682,6 @@ void loop()
     }
 #endif
 
-    button.Sample();
-    if (button.IsPressed()) {
-        button.Reset();
-        if (!InBindingMode) {
-            EnterBindingMode();
-        }
-        else {
-            CancelBindingMode();
-        }
-    }
-
     UpdateLEDState();
 }
 
@@ -691,7 +699,8 @@ void PrintMac()
 
 void EnterBindingMode()
 {
-    if ((PREVENT_BIND_WHEN_CONNECTED && connectionState == connected) || InBindingMode || webUpdateMode) {
+    if ((PREVENT_BIND_WHEN_CONNECTED && connectionState == connected) || InBindingMode || webUpdateMode)
+    {
         // Don't enter binding if:
         // - we're already connected
         // - we're already binding
@@ -717,7 +726,8 @@ void EnterBindingMode()
 
 void ExitBindingMode()
 {
-    if (!InBindingMode) {
+    if (!InBindingMode)
+    {
         // Not in binding mode
         return;
     }
@@ -747,7 +757,8 @@ void ExitBindingMode()
 
 void CancelBindingMode()
 {
-    if (!InBindingMode) {
+    if (!InBindingMode)
+    {
         // Not in binding mode
         return;
     }
@@ -812,7 +823,8 @@ void WriteMacToFlash()
 
 void UpdateLEDState(bool forceOff)
 {
-    if (forceOff) {
+    if (forceOff)
+    {
         // Turn the LED off immediately
         // Used on disconnect
         LED = false;
@@ -820,7 +832,8 @@ void UpdateLEDState(bool forceOff)
         return;
     }
 
-    if (!InBindingMode && connectionState == connected && !webUpdateMode) {
+    if (!InBindingMode && connectionState == connected && !webUpdateMode)
+    {
         // Turn the LED on solid if we're connected
         LED = true;
         digitalWrite(GPIO_PIN_LED, LED);
@@ -828,17 +841,21 @@ void UpdateLEDState(bool forceOff)
     }
     
     // Various flash intervals for other states
-    if (InBindingMode) {
+    if (InBindingMode)
+    {
         LEDCycleInterval = LED_BINDING_INTERVAL;
     }
-    else if (connectionState == disconnected && !webUpdateMode) {
+    else if (connectionState == disconnected && !webUpdateMode)
+    {
         LEDCycleInterval = LED_DISCONNECTED_INTERVAL;
     }
-    else if (webUpdateMode) {
+    else if (webUpdateMode)
+    {
         LEDCycleInterval = LED_WEB_UPDATE_INTERVAL;
     }
 
-    if (millis() > (LEDLastCycled + LEDCycleInterval)) {
+    if (millis() > (LEDLastCycled + LEDCycleInterval))
+    {
         LED = !LED;
         digitalWrite(GPIO_PIN_LED, LED);
         LEDLastCycled = millis();

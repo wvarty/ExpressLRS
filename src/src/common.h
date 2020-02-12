@@ -13,11 +13,16 @@
 
 #define One_Bit_Switches
 
+// Disable binding when connected to TX
+#define PREVENT_BIND_WHEN_CONNECTED true
+
 extern uint8_t TxBaseMac[6];
-
 extern uint8_t CRCCaesarCipher;
-
 extern uint8_t DeviceAddr;
+
+extern uint8_t BindingCipher;
+extern uint8_t BindingAddr;
+extern bool FreqLocked;
 
 typedef enum
 {
@@ -89,18 +94,6 @@ extern expresslrs_mod_settings_s ExpressLRS_prevAirRate;
 #define MaxPower1000mW_Module 30
 #define RF_Gain 10
 
-extern int8_t ExpressLRS_currPower;
-extern int8_t ExpressLRS_prevPower;
-
-int16_t MeasureNoiseFloor();
-int16_t MeasureRSSI(int FHSSindex);
-uint8_t TLMratioEnumToValue(expresslrs_tlm_ratio_e enumval);
-int8_t ExpressLRS_currPower = 0;
-int8_t ExpressLRS_prevPower = 0;
-
-#define PREVENT_BIND_WHEN_CONNECTED true
-#define USE_FLASH_FOR_MAC false // Set this to false to keep using hardcoded MAC
-
 // expresslrs packet header types
 // 00 -> standard 4 channel data packet
 // 01 -> switch data packet
@@ -110,3 +103,10 @@ int8_t ExpressLRS_prevPower = 0;
 #define SWITCH_DATA_PACKET  0b01
 #define TLM_PACKET          0b11
 #define SYNC_PACKET         0b10
+
+extern int8_t ExpressLRS_currPower;
+extern int8_t ExpressLRS_prevPower;
+
+int16_t MeasureNoiseFloor();
+int16_t MeasureRSSI(int FHSSindex);
+uint8_t TLMratioEnumToValue(expresslrs_tlm_ratio_e enumval);

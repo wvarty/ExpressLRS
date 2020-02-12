@@ -84,17 +84,20 @@ void ICACHE_RAM_ATTR ProcessTLMpacket()
 
   //DEBUG_PRINTLN("TLMpacket0");
 
-  if (packetAddr != DeviceAddr) {
+  if (packetAddr != DeviceAddr)
+  {
     DEBUG_PRINTLN("TLM dev addr error");
   }
 
-  if (inCRC != calculatedCRC) {
+  if (inCRC != calculatedCRC)
+  {
     DEBUG_PRINTLN("TLM crc error");
   }
 
   packetCounteRX_TX++;
   
-  if (type != TLM_PACKET) {
+  if (type != TLM_PACKET)
+  {
     DEBUG_PRINTLN("TLM type error");
     DEBUG_PRINTLN(type);
   }
@@ -202,7 +205,8 @@ void SetRFLinkRate(expresslrs_mod_settings_s mode) // Set speed of RF link (hz)
 
 void ICACHE_RAM_ATTR HandleFHSS()
 {
-  if (FreqLocked) {
+  if (FreqLocked)
+  {
     return;
   }
   
@@ -510,7 +514,7 @@ void loop()
   DEBUG_PRINTLN(crsf.OpenTXsyncOffset);
 #endif
 
-  updateLEDs(isRXconnected, ExpressLRS_currAirRate.TLMinterval);
+  updateLEDs(connectionState == connected, ExpressLRS_currAirRate.TLMinterval);
 
   if (millis() > (RXconnectionLostTimeout + LastTLMpacketRecvMillis))
   {
@@ -562,7 +566,8 @@ void PrintMac()
 
 void EnterBindingMode()
 {
-    if ((PREVENT_BIND_WHEN_CONNECTED && connectionState == connected) || InBindingMode) {
+    if ((PREVENT_BIND_WHEN_CONNECTED && connectionState == connected) || InBindingMode)
+    {
         // Don't enter binding if:
         // - we're already connected
         // - we're already binding
@@ -591,7 +596,8 @@ void EnterBindingMode()
 
 void ExitBindingMode()
 {
-  if (!InBindingMode) {
+  if (!InBindingMode)
+  {
     // Not in binding mode
     return;
   }
@@ -617,7 +623,8 @@ void ExitBindingMode()
 
 void CancelBindingMode()
 {
-  if (!InBindingMode) {
+  if (!InBindingMode)
+  {
     // Not in binding mode
     return;
   }

@@ -34,6 +34,7 @@ uint8_t DeviceAddr = TxBaseMac[5] & 0b111111; // temporarily based on mac until 
 
 uint8_t BindingCipher = 100;
 uint8_t BindingAddr = 50 & 0b111111;
+
 bool FreqLocked = false;
 
 #define RSSI_FLOOR_NUM_READS 5 // number of times to sweep the noise foor to get avg. RSSI reading
