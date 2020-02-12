@@ -14,8 +14,11 @@
 #include "ESP8266_WebUpdate.h"
 #endif
 #ifdef PLATFORM_STM32
-#include "../lib/Arduino_Core_STM32-master/libraries/EEPROM/src/EEPROM.h"
 #include "STM32_UARTinHandler.h"
+#include <Wire.h>
+#include <extEEPROM.h>
+
+extEEPROM EEPROM(kbits_2, 1, 1);
 #endif
 
 #include "errata.h"
@@ -74,6 +77,13 @@ int32_t Offset;
 int32_t Offset90;
 uint32_t SerialDebugPrintInterval = 250;
 uint32_t LastSerialDebugPrint = 0;
+
+//// Variables Relating to Button behaviour ////
+bool buttonPrevValue = true; //default pullup
+bool buttonDown = false;     //is the button current pressed down?
+uint32_t buttonSampleInterval = 150;
+uint32_t buttonLastSampled = 0;
+uint32_t buttonLastPressed = 0;
 
 uint32_t LEDLastCycled = 0;
 uint32_t LEDCycleInterval = 1000;
@@ -482,9 +492,6 @@ void ICACHE_RAM_ATTR SetRFLinkRate(expresslrs_mod_settings_s mode) // Set speed 
 void setup()
 {
     // Read bound MAC addr from flash
-#ifdef PLATFORM_ESP8266
-    EEPROM.begin(3);
-#endif
     if (USE_FLASH_FOR_MAC)
     {
         // Set USE_FLASH_FOR_MAC to true in common to enable binding
@@ -494,10 +501,19 @@ void setup()
         DeviceAddr = TxBaseMac[5] & 0b111111;
     }
 
+#ifdef PLATFORM_ESP8266
+    EEPROM.begin(3);
+#endif
 #ifdef PLATFORM_STM32
     Serial.setTx(GPIO_PIN_RCSIGNAL_TX);
     Serial.setRx(GPIO_PIN_RCSIGNAL_RX);
     crsf.InitSerial();
+
+    Wire.setSDA(GPIO_PIN_EEPROM_SDA); // set is needed or it wont work :/
+    Wire.setSCL(GPIO_PIN_EEPROM_SCK);
+    Wire.begin();
+
+    EEPROM.begin();
 #endif
 
 #ifdef DEBUG
@@ -819,7 +835,6 @@ void WriteMacToFlash()
     EEPROM.write(writeAddress, TxBaseMac[5]);
 #endif
 }
-
 
 void UpdateLEDState(bool forceOff)
 {

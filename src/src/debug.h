@@ -5,8 +5,8 @@
 // Assumes that the Serial object has been initialised and setup
 
 // Uncomment the line below to enable debug logging
-// This also stops the CRSF object from sending packets to the FC
-#define DEBUG
+// This also stops the CRSF object from sending packets to the FC on the RX
+// #define DEBUG
 
 #ifdef DEBUG
     #define DEBUG_PRINT(...) Serial.print(__VA_ARGS__)

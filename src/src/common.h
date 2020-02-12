@@ -16,6 +16,9 @@
 // Disable binding when connected to TX
 #define PREVENT_BIND_WHEN_CONNECTED true
 
+// Set to false to use hardcoded MAC
+#define USE_FLASH_FOR_MAC true
+
 extern uint8_t TxBaseMac[6];
 extern uint8_t CRCCaesarCipher;
 extern uint8_t DeviceAddr;
