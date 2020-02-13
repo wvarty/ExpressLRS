@@ -14,6 +14,9 @@
 
 String DebugOutput;
 
+// Button hold timespans for different modes
+#define BUTTON_BINDING_INTERVAL 100
+
 /// define some libs to use ///
 SX127xDriver Radio;
 CRSF crsf;
@@ -48,6 +51,12 @@ uint32_t RFmodeLastCycled = 0;
 uint32_t RFmodeCycleInterval = 1000;
 uint32_t SyncPacketAddtionalTime = 1500; //After we have a tentative sync we wait this long in addtion before jumping to different RF mode again.
 ///////////////////////////////////////
+
+//// Variables Relating to Button behaviour ////
+bool buttonPrevValue = true; //default pullup
+bool buttonDown = false;     //is the button current pressed down?
+uint32_t buttonLastSampled = 0;
+uint32_t buttonLastPressed = 0;
 
 bool UpdateParamReq = false;
 
@@ -495,20 +504,42 @@ void setup()
   crsf.Begin();
 }
 
+void ICACHE_RAM_ATTR sampleButton()
+{
+    bool buttonValue = digitalRead(36);
+
+    if (buttonValue == false && buttonPrevValue == true)
+    { //falling edge
+        buttonLastPressed = millis();
+        buttonDown = true;
+    }
+
+    if (buttonValue == true && buttonPrevValue == false) //rising edge
+    {
+        buttonDown = false;
+    }
+
+    if ((millis() > buttonLastPressed + BUTTON_BINDING_INTERVAL) && buttonDown)
+    {
+        if (!InBindingMode)
+        {
+            EnterBindingMode();
+        }
+    }
+
+    buttonPrevValue = buttonValue;
+}
+
 void loop()
 {
+  sampleButton();
 
   delay(100);
 
-  if (digitalRead(4) == 0)
-  {
-    DEBUG_PRINTLN("Switch Pressed!");
-  }
-
-  if (digitalRead(36) == 0)
-  {
-    DEBUG_PRINTLN("Switch Pressed!");
-  }
+  // if (digitalRead(36) == 0)
+  // {
+  //   DEBUG_PRINTLN("Switch Pressed!");
+  // }
 
 #ifdef FEATURE_OPENTX_SYNC
   DEBUG_PRINTLN(crsf.OpenTXsyncOffset);

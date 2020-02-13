@@ -75,7 +75,6 @@ uint32_t LastSerialDebugPrint = 0;
 //// Variables Relating to Button behaviour ////
 bool buttonPrevValue = true; //default pullup
 bool buttonDown = false;     //is the button current pressed down?
-uint32_t buttonSampleInterval = 150;
 uint32_t buttonLastSampled = 0;
 uint32_t buttonLastPressed = 0;
 
@@ -432,9 +431,9 @@ void ICACHE_RAM_ATTR sampleButton()
     { //falling edge
         buttonLastPressed = millis();
         buttonDown = true;
-        DEBUG_PRINTLN("Manual Start");
-        Radio.SetFrequency(GetInitialFreq());
-        Radio.RXnb();
+        // DEBUG_PRINTLN("Manual Start");
+        // Radio.SetFrequency(GetInitialFreq());
+        // Radio.RXnb();
     }
 
     if (buttonValue == true && buttonPrevValue == false) //rising edge
@@ -555,7 +554,8 @@ void setup()
 
 void loop()
 {
-
+    sampleButton();
+    
     if (millis() > (RFmodeLastCycled + ExpressLRS_currAirRate.RFmodeCycleInterval + ((connectionState == tentative) ? ExpressLRS_currAirRate.RFmodeCycleAddtionalTime : 0))) // connection = tentative we add alittle delay
     {
         if ((connectionState == disconnected) && !webUpdateMode)
