@@ -20,7 +20,7 @@ ESP8266HTTPUpdateServer httpUpdater;
 void BeginWebUpdate(void)
 {
 
-  Serial.println("Begin Webupdater");
+  DEBUG_PRINTLN("Begin Webupdater");
   WiFi.mode(WIFI_AP);
   WiFi.softAP(ssid, password);
 
@@ -30,7 +30,7 @@ void BeginWebUpdate(void)
   httpServer.begin();
 
   MDNS.addService("http", "tcp", 80);
-  Serial.printf("HTTPUpdateServer ready! Open http://%s.local/update in your browser\n", host);
+  DEBUG_PRINTF("HTTPUpdateServer ready! Open http://%s.local/update in your browser\n", host);
 }
 
 void HandleWebUpdate(void)

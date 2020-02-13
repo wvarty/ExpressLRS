@@ -1,4 +1,5 @@
 #include "FHSS.h"
+#include "debug.h"
 
 uint8_t volatile FHSSptr = 0;
 uint8_t FHSSsequence[256] = {0};
@@ -63,10 +64,11 @@ uint32_t ICACHE_RAM_ATTR FHSSgetNextFreq()
 void ICACHE_RAM_ATTR FHSSrandomiseFHSSsequence()
 {
 
-    Serial.print("FHSSsequence[] = ");
+    DEBUG_PRINT("FHSSsequence[] = ");
 
-    long macSeed = ((long)TxBaseMac[2] << 24) + ((long)TxBaseMac[3] << 16) + ((long)TxBaseMac[4] << 8) + TxBaseMac[5];
-    rngSeed(macSeed);
+    // TODO: Check that removing UID[2] still gives a good seed
+    long uidSeed = ((long)UID[2] << 24) + ((long)UID[3] << 16) + ((long)UID[4] << 8) + UID[5];
+    rngSeed(uidSeed);
 
 #ifdef Regulatory_Domain_AU_915
 
@@ -102,8 +104,8 @@ void ICACHE_RAM_ATTR FHSSrandomiseFHSSsequence()
         tracker[rand]++;
         prev_val = rand;
 
-        Serial.print(FHSSsequence[i]);
-        Serial.print(", ");
+        DEBUG_PRINT(FHSSsequence[i]);
+        DEBUG_PRINT(", ");
     }
 
 #elif defined Regulatory_Domain_AU_433
@@ -121,11 +123,11 @@ void ICACHE_RAM_ATTR FHSSrandomiseFHSSsequence()
         prev_val = rand;
         FHSSsequence[i] = rand;
 
-        Serial.print(FHSSsequence[i]);
-        Serial.print(", ");
+        DEBUG_PRINT(FHSSsequence[i]);
+        DEBUG_PRINT(", ");
     }
 
 #endif
 
-    Serial.println("");
+    DEBUG_PRINTLN("");
 }

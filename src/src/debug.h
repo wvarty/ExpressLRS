@@ -6,15 +6,15 @@
 
 // Uncomment the line below to enable debug logging
 // This also stops the CRSF object from sending packets to the FC on the RX
-// #define DEBUG
+#define DEBUG
 
 #ifdef DEBUG
     #define DEBUG_PRINT(...) Serial.print(__VA_ARGS__)
     #define DEBUG_PRINTLN(...) Serial.println(__VA_ARGS__)
     #define DEBUG_PRINTF(format, ...) Serial.printf(format, ##__VA_ARGS__)
 #else
-    #define DEBUG_PRINT(x)
-    #define DEBUG_PRINTLN(x)
+    #define DEBUG_PRINT(...)
+    #define DEBUG_PRINTLN(...)
     #define DEBUG_PRINTF(format, ...)
 #endif
 

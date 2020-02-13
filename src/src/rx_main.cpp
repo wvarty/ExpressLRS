@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include "targets.h"
+#include "elrs_eeprom.h"
 #include "utils.h"
 #include "common.h"
 #include "LowPassFilter.h"
@@ -10,15 +11,10 @@
 #include "rx_LinkQuality.h"
 
 #ifdef PLATFORM_ESP8266
-#include <EEPROM.h>
 #include "ESP8266_WebUpdate.h"
 #endif
 #ifdef PLATFORM_STM32
 #include "STM32_UARTinHandler.h"
-#include <Wire.h>
-#include <extEEPROM.h>
-
-extEEPROM EEPROM(kbits_2, 1, 1);
 #endif
 
 #include "errata.h"
@@ -35,6 +31,7 @@ extEEPROM EEPROM(kbits_2, 1, 1);
 
 SX127xDriver Radio;
 CRSF crsf(Serial); //pass a serial port object to the class for it to use
+ELRS_EEPROM eeprom;
 
 //Filters//
 LPF LPF_PacketInterval(3);
@@ -58,10 +55,7 @@ bool InBindingMode = false;
 void EnterBindingMode();
 void ExitBindingMode();
 void CancelBindingMode();
-void PrintMac();
-
-void ReadMacFromFlash();
-void WriteMacToFlash();
+void PrintUID();
 
 void UpdateLEDState(bool forceOff = false);
 
@@ -136,7 +130,7 @@ void ICACHE_RAM_ATTR getRFlinkInfo()
     crsf.LinkStatistics.uplink_Link_quality = linkQuality;
     crsf.LinkStatistics.rf_Mode = ExpressLRS_currAirRate.enum_rate;
 
-    //Serial.println(crsf.LinkStatistics.uplink_RSSI_1);
+    //DEBUG_PRINTLN(crsf.LinkStatistics.uplink_RSSI_1);
 }
 
 void ICACHE_RAM_ATTR HandleFHSS()
@@ -339,7 +333,7 @@ void ICACHE_RAM_ATTR ProcessRFPacket()
             ExitBindingMode();
             return;
         }
-        if (Radio.RXdataBuffer[4] == TxBaseMac[3] && Radio.RXdataBuffer[5] == TxBaseMac[4] && Radio.RXdataBuffer[6] == TxBaseMac[5])
+        if (Radio.RXdataBuffer[4] == UID[3] && Radio.RXdataBuffer[5] == UID[4] && Radio.RXdataBuffer[6] == UID[5])
         {
             if (connectionState == disconnected)
             {
@@ -376,8 +370,8 @@ void ICACHE_RAM_ATTR ProcessRFPacket()
     if (((NonceRXlocal + 1) % ExpressLRS_currAirRate.FHSShopInterval) == 0) //premept the FHSS if we already know we'll have to do it next timer tick.
     {
         int32_t freqerror = LPF_FreqError.update(Radio.GetFrequencyError());
-        //Serial.print(freqerror);
-        //Serial.print(" : ");
+        //DEBUG_PRINT(freqerror);
+        //DEBUG_PRINT(" : ");
 
         if (freqerror > 0)
         {
@@ -388,7 +382,7 @@ void ICACHE_RAM_ATTR ProcessRFPacket()
             else
             {
                 FreqCorrection = FreqCorrectionMax;
-                Serial.println("Max pos reasontable freq offset correction limit reached!");
+                DEBUG_PRINTLN("Max pos reasontable freq offset correction limit reached!");
             }
         }
         else
@@ -400,13 +394,13 @@ void ICACHE_RAM_ATTR ProcessRFPacket()
             else
             {
                 FreqCorrection = FreqCorrectionMin;
-                Serial.println("Max neg reasontable freq offset correction limit reached!");
+                DEBUG_PRINTLN("Max neg reasontable freq offset correction limit reached!");
             }
         }
 
         Radio.setPPMoffsetReg(FreqCorrection);
 
-        //Serial.println(FreqCorrection);
+        //DEBUG_PRINTLN(FreqCorrection);
 
         HandleFHSS();
         alreadyFHSS = true;
@@ -438,7 +432,7 @@ void ICACHE_RAM_ATTR sampleButton()
     { //falling edge
         buttonLastPressed = millis();
         buttonDown = true;
-        Serial.println("Manual Start");
+        DEBUG_PRINTLN("Manual Start");
         Radio.SetFrequency(GetInitialFreq());
         Radio.RXnb();
     }
@@ -471,7 +465,7 @@ void ICACHE_RAM_ATTR sampleButton()
     if ((millis() > buttonLastPressed + BUTTON_RESET_INTERVAL) && buttonDown)
     {
         //ESP.restart();
-        //Serial.println("Setting Bootloader Bit..");
+        //DEBUG_PRINTLN("Setting Bootloader Bit..");
     }
 
     buttonPrevValue = buttonValue;
@@ -491,29 +485,22 @@ void ICACHE_RAM_ATTR SetRFLinkRate(expresslrs_mod_settings_s mode) // Set speed 
 
 void setup()
 {
-    // Read bound MAC addr from flash
-    if (USE_FLASH_FOR_MAC)
+    // Set USE_FLASH_FOR_UID to true in common.h to enable binding
+    // Set to false to keep using hardcoded UID addresses
+    if (USE_FLASH_FOR_UID)
     {
-        // Set USE_FLASH_FOR_MAC to true in common to enable binding
-        // Set to false to keep using hardcoded MAC addresses
-        ReadMacFromFlash();
-        CRCCaesarCipher = TxBaseMac[4];
-        DeviceAddr = TxBaseMac[5] & 0b111111;
+        // Read bound UID addr from flash
+        eeprom.ReadUniqueID(UID);
+        CRCCaesarCipher = UID[4];
+        DeviceAddr = UID[5] & 0b111111;
     }
 
-#ifdef PLATFORM_ESP8266
-    EEPROM.begin(3);
-#endif
+    eeprom.Begin();
+
 #ifdef PLATFORM_STM32
     Serial.setTx(GPIO_PIN_RCSIGNAL_TX);
     Serial.setRx(GPIO_PIN_RCSIGNAL_RX);
     crsf.InitSerial();
-
-    Wire.setSDA(GPIO_PIN_EEPROM_SDA); // set is needed or it wont work :/
-    Wire.setSCL(GPIO_PIN_EEPROM_SCK);
-    Wire.begin();
-
-    EEPROM.begin();
 #endif
 
 #ifdef DEBUG
@@ -546,9 +533,9 @@ void setup()
     Radio.SetOutputPower(0b1111);
 
     RFnoiseFloor = MeasureNoiseFloor();
-    Serial.print("RF noise floor: ");
-    Serial.print(RFnoiseFloor);
-    Serial.println("dBm");
+    DEBUG_PRINT("RF noise floor: ");
+    DEBUG_PRINT(RFnoiseFloor);
+    DEBUG_PRINTLN("dBm");
 
     Radio.RXdoneCallback1 = &ProcessRFPacket;
 
@@ -701,12 +688,12 @@ void loop()
     UpdateLEDState();
 }
 
-void PrintMac()
+void PrintUID()
 {
-    DEBUG_PRINT("MAC = ");
-    DEBUG_PRINT(TxBaseMac[3]);
-    DEBUG_PRINT(TxBaseMac[4]);
-    DEBUG_PRINTLN(TxBaseMac[5]);
+    DEBUG_PRINT("UID = ");
+    DEBUG_PRINT(UID[3]);
+    DEBUG_PRINT(UID[4]);
+    DEBUG_PRINTLN(UID[5]);
     DEBUG_PRINT("DEV ADDR = ");
     DEBUG_PRINTLN(DeviceAddr);
     DEBUG_PRINT("CRCCaesarCipher = ");
@@ -737,7 +724,7 @@ void EnterBindingMode()
     UpdateConnectionState(disconnected);
 
     DEBUG_PRINTLN("=== Entered binding mode ===");
-    PrintMac();
+    PrintUID();
 }
 
 void ExitBindingMode()
@@ -748,17 +735,17 @@ void ExitBindingMode()
         return;
     }
 
-    // Read MAC data from TX
-    TxBaseMac[3] = Radio.RXdataBuffer[4];
-    TxBaseMac[4] = Radio.RXdataBuffer[5];
-    TxBaseMac[5] = Radio.RXdataBuffer[6];
-    CRCCaesarCipher = TxBaseMac[4];
-    DeviceAddr = TxBaseMac[5] & 0b111111;
+    // Read UID data from TX
+    UID[3] = Radio.RXdataBuffer[4];
+    UID[4] = Radio.RXdataBuffer[5];
+    UID[5] = Radio.RXdataBuffer[6];
+    CRCCaesarCipher = UID[4];
+    DeviceAddr = UID[5] & 0b111111;
 
-    // Store MAC in flash for reading on boot
-    WriteMacToFlash();
+    // Store UID in flash for reading on boot
+    eeprom.WriteUniqueID(UID);
 
-    // Randomise the FHSS seq using the new MAC addr
+    // Randomise the FHSS seq using the new UID addr
     // and start at the initial freq
     FHSSrandomiseFHSSsequence();
     FreqLocked = false;
@@ -768,7 +755,7 @@ void ExitBindingMode()
     UpdateConnectionState(disconnected);
 
     DEBUG_PRINTLN("=== Binding successful ===");
-    PrintMac();
+    PrintUID();
 }
 
 void CancelBindingMode()
@@ -780,60 +767,17 @@ void CancelBindingMode()
     }
 
     // Binding cancelled
-    ReadMacFromFlash();
+    eeprom.ReadUniqueID(UID);
 
     // Revert to original cipher and addr
-    CRCCaesarCipher = TxBaseMac[4];
-    DeviceAddr = TxBaseMac[5] & 0b111111;
+    CRCCaesarCipher = UID[4];
+    DeviceAddr = UID[5] & 0b111111;
 
     InBindingMode = false;
     UpdateConnectionState(disconnected);
 
     DEBUG_PRINTLN("=== Binding mode cancelled ===");
-    PrintMac();
-}
-
-void ReadMacFromFlash()
-{
-    uint8_t readAddress = 0;
-
-#ifdef PLATFORM_ESP8266
-    EEPROM.get(readAddress, TxBaseMac[3]);
-    readAddress += sizeof(TxBaseMac[3]);
-    EEPROM.get(readAddress, TxBaseMac[4]);
-    readAddress += sizeof(TxBaseMac[4]);
-    EEPROM.get(readAddress, TxBaseMac[5]);
-#endif
-
-#ifdef PLATFORM_STM32
-    TxBaseMac[3] = EEPROM.read(readAddress);
-    readAddress += sizeof(uint8_t);
-    TxBaseMac[4] = EEPROM.read(readAddress);
-    readAddress += sizeof(uint8_t);
-    TxBaseMac[5] = EEPROM.read(readAddress);
-#endif
-}
-
-void WriteMacToFlash()
-{
-    uint8_t writeAddress = 0;
-
-#ifdef PLATFORM_ESP8266
-    EEPROM.put(writeAddress, TxBaseMac[3]);
-    writeAddress += sizeof(TxBaseMac[3]);
-    EEPROM.put(writeAddress, TxBaseMac[4]);
-    writeAddress += sizeof(TxBaseMac[4]);
-    EEPROM.put(writeAddress, TxBaseMac[5]);
-    EEPROM.commit();
-#endif
-
-#ifdef PLATFORM_STM32
-    EEPROM.write(writeAddress, TxBaseMac[3]);
-    writeAddress += sizeof(uint8_t);
-    EEPROM.write(writeAddress, TxBaseMac[4]);
-    writeAddress += sizeof(uint8_t);
-    EEPROM.write(writeAddress, TxBaseMac[5]);
-#endif
+    PrintUID();
 }
 
 void UpdateLEDState(bool forceOff)

@@ -22,7 +22,7 @@ bool InBindingMode = false;
 void EnterBindingMode();
 void ExitBindingMode();
 void CancelBindingMode();
-void PrintMac();
+void PrintUID();
 void UpdateConnectionState(connectionState_e state);
 
 //// Switch Data Handling ///////
@@ -141,9 +141,9 @@ void ICACHE_RAM_ATTR GenerateSyncPacketData()
   Radio.TXdataBuffer[1] = FHSSgetCurrIndex();
   Radio.TXdataBuffer[2] = Radio.NonceTX;
   Radio.TXdataBuffer[3] = 0;
-  Radio.TXdataBuffer[4] = TxBaseMac[3];
-  Radio.TXdataBuffer[5] = TxBaseMac[4];
-  Radio.TXdataBuffer[6] = TxBaseMac[5];
+  Radio.TXdataBuffer[4] = UID[3];
+  Radio.TXdataBuffer[5] = UID[4];
+  Radio.TXdataBuffer[6] = UID[5];
 }
 
 void ICACHE_RAM_ATTR Generate4ChannelData_10bit()
@@ -333,37 +333,37 @@ void ICACHE_RAM_ATTR HandleUpdateParameter()
       case 0:
         Radio.maxPWR = 0b1111;
         Radio.SetOutputPower(0b1111); // 500 mW
-        Serial.println("Setpower 500 mW");
+        DEBUG_PRINTLN("Setpower 500 mW");
         break;
 
       case 1:
         Radio.maxPWR = 0b1000;
         Radio.SetOutputPower(0b1111);
-        Serial.println("Setpower 200 mW");
+        DEBUG_PRINTLN("Setpower 200 mW");
         break;
 
       case 2:
         Radio.maxPWR = 0b1000;
         Radio.SetOutputPower(0b1000);
-        Serial.println("Setpower 100 mW");
+        DEBUG_PRINTLN("Setpower 100 mW");
         break;
 
       case 3:
         Radio.maxPWR = 0b0101;
         Radio.SetOutputPower(0b0101);
-        Serial.println("Setpower 50 mW");
+        DEBUG_PRINTLN("Setpower 50 mW");
         break;
 
       case 4:
         Radio.maxPWR = 0b0010;
         Radio.SetOutputPower(0b0010);
-        Serial.println("Setpower 25 mW");
+        DEBUG_PRINTLN("Setpower 25 mW");
         break;
 
       case 5:
         Radio.maxPWR = 0b0000;
         Radio.SetOutputPower(0b0000);
-        Serial.println("Setpower Pit");
+        DEBUG_PRINTLN("Setpower Pit");
         break;
 
       default:
@@ -419,34 +419,34 @@ void setup()
   pinMode(36, INPUT_PULLUP);
 
   Serial.begin(115200);
-  Serial.println("ExpressLRS TX Module Booted...");
+  DEBUG_PRINTLN("ExpressLRS TX Module Booted...");
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); //disable brownout detector
 
   strip.Begin();
   for(int n = 0; n < 3; n++) strip.SetPixelColor(n, RgbColor(255, 0, 0));
   strip.Show();
 
-  // Get base mac address
-  uint8_t baseMac[6];
-  esp_read_mac(baseMac, ESP_MAC_WIFI_STA);
+  // Get base UID address
+  uint8_t baseUID[6];
+  esp_read_mac(baseUID, ESP_MAC_WIFI_STA);
 
-  // Print base mac address
+  // Print base UID address
   // This should be copied to common.h and is used to generate a unique hop sequence, DeviceAddr, and CRC.
-  // TxBaseMac[0..2] are OUI (organisationally unique identifier) and are not ESP32 unique.  Do not use!
+  // UID[0..2] are OUI (organisationally unique identifier) and are not ESP32 unique.  Do not use!
   DEBUG_PRINTLN("");
   DEBUG_PRINTLN("Copy the below line into common.h.");
-  DEBUG_PRINT("uint8_t TxBaseMac[6] = {");
-  DEBUG_PRINT(baseMac[0]);
+  DEBUG_PRINT("uint8_t UID[6] = {");
+  DEBUG_PRINT(baseUID[0]);
   DEBUG_PRINT(", ");
-  DEBUG_PRINT(baseMac[1]);
+  DEBUG_PRINT(baseUID[1]);
   DEBUG_PRINT(", ");
-  DEBUG_PRINT(baseMac[2]);
+  DEBUG_PRINT(baseUID[2]);
   DEBUG_PRINT(", ");
-  DEBUG_PRINT(baseMac[3]);
+  DEBUG_PRINT(baseUID[3]);
   DEBUG_PRINT(", ");
-  DEBUG_PRINT(baseMac[4]);
+  DEBUG_PRINT(baseUID[4]);
   DEBUG_PRINT(", ");
-  DEBUG_PRINT(baseMac[5]);
+  DEBUG_PRINT(baseUID[5]);
   DEBUG_PRINTLN("};");
   DEBUG_PRINTLN("");
 
@@ -500,15 +500,15 @@ void loop()
 
   delay(100);
 
-  // if (digitalRead(4) == 0)
-  // {
-  //   Serial.println("Switch Pressed!");
-  // }
+  if (digitalRead(4) == 0)
+  {
+    DEBUG_PRINTLN("Switch Pressed!");
+  }
 
-  // if (digitalRead(36) == 0)
-  // {
-  //   Serial.println("Switch Pressed!");
-  // }
+  if (digitalRead(36) == 0)
+  {
+    DEBUG_PRINTLN("Switch Pressed!");
+  }
 
 #ifdef FEATURE_OPENTX_SYNC
   DEBUG_PRINTLN(crsf.OpenTXsyncOffset);
@@ -552,12 +552,12 @@ void loop()
   packetCounteRX_TX = 0;
 }
 
-void PrintMac()
+void PrintUID()
 {
-    DEBUG_PRINT("MAC = ");
-    DEBUG_PRINT(TxBaseMac[3]);
-    DEBUG_PRINT(TxBaseMac[4]);
-    DEBUG_PRINTLN(TxBaseMac[5]);
+    DEBUG_PRINT("UID = ");
+    DEBUG_PRINT(UID[3]);
+    DEBUG_PRINT(UID[4]);
+    DEBUG_PRINTLN(UID[5]);
     DEBUG_PRINT("DEV ADDR = ");
     DEBUG_PRINTLN(DeviceAddr);
     DEBUG_PRINT("CRCCaesarCipher = ");
@@ -588,7 +588,7 @@ void EnterBindingMode()
     UpdateConnectionState(disconnected);
 
     DEBUG_PRINTLN("=== Entered binding mode ===");
-    PrintMac();
+    PrintUID();
 
     for(int n = 0; n < 3; n++) strip.SetPixelColor(n, RgbColor(0, 0, 255));
     strip.Show();
@@ -602,8 +602,8 @@ void ExitBindingMode()
     return;
   }
 
-  CRCCaesarCipher = TxBaseMac[4];
-  DeviceAddr = TxBaseMac[5] & 0b111111;
+  CRCCaesarCipher = UID[4];
+  DeviceAddr = UID[5] & 0b111111;
 
   // Revert to original packet rate
   // and go to initial freq
@@ -615,7 +615,7 @@ void ExitBindingMode()
   UpdateConnectionState(disconnected);
 
   DEBUG_PRINTLN("=== Binding successful ===");
-  PrintMac();
+  PrintUID();
 
   for(int n = 0; n < 3; n++) strip.SetPixelColor(n, RgbColor(0, 255, 0));
   strip.Show();
@@ -635,8 +635,8 @@ void CancelBindingMode()
   Radio.SetFrequency(GetInitialFreq());
 
   // Revert to original cipher and addr
-  CRCCaesarCipher = TxBaseMac[4];
-  DeviceAddr = TxBaseMac[5] & 0b111111;
+  CRCCaesarCipher = UID[4];
+  DeviceAddr = UID[5] & 0b111111;
 
   // Binding cancelled
   // Go to a disconnected state
@@ -644,7 +644,7 @@ void CancelBindingMode()
   UpdateConnectionState(disconnected);
 
   DEBUG_PRINTLN("=== Binding mode cancelled ===");
-  PrintMac();
+  PrintUID();
 
   for(int n = 0; n < 3; n++) strip.SetPixelColor(n, RgbColor(255, 0, 0));
   strip.Show();

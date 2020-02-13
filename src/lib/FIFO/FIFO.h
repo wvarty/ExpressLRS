@@ -33,6 +33,7 @@
 
 #include "Arduino.h"
 #include "../../src/targets.h"
+#include "../../src/debug.h"
 
 #define FIFO_SIZE 256
 
