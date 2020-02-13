@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include "targets.h"
+#include "elrs_eeprom.h"
 #include "utils.h"
 #include "common.h"
 #include "LowPassFilter.h"
@@ -15,10 +16,6 @@
 
 #ifdef PLATFORM_STM32
 #include "STM32_UARTinHandler.h"
-#include <Wire.h>
-#include <extEEPROM.h>
-
-extEEPROM EEPROM(kbits_2, 1, 1);
 #endif
 
 #include "errata.h"
@@ -460,27 +457,13 @@ void ICACHE_RAM_ATTR SetRFLinkRate(expresslrs_mod_settings_s mode) // Set speed 
 
 void setup()
 {
+    EepromSetup();
+
 #ifdef PLATFORM_STM32
     Serial.setTx(GPIO_PIN_RCSIGNAL_TX);
     Serial.setRx(GPIO_PIN_RCSIGNAL_RX);
-    // Serial.begin(420000);
-    Serial.begin(115200);
+    Serial.begin(420000);
     crsf.InitSerial();
-
-    Wire.setSDA(GPIO_PIN_EEPROM_SDA); // set is needed or it wont work :/
-    Wire.setSCL(GPIO_PIN_EEPROM_SCK);
-    Wire.begin();
-
-    EEPROM.begin();
-
-    delay(5000);
-
-    for(int i=0; i<256; i++)
-    {
-        Serial.print(EEPROM.read(i), HEX);
-        Serial.print(",");
-    }
-    Serial.println("");
 #endif
 
 #ifdef PLATFORM_ESP8266
