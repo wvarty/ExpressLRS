@@ -96,11 +96,13 @@ void ICACHE_RAM_ATTR ProcessTLMpacket()
   if (packetAddr != DeviceAddr)
   {
     DEBUG_PRINTLN("TLM dev addr error");
+    return;
   }
 
   if (inCRC != calculatedCRC)
   {
     DEBUG_PRINTLN("TLM crc error");
+    return;
   }
 
   packetCounteRX_TX++;
@@ -109,6 +111,11 @@ void ICACHE_RAM_ATTR ProcessTLMpacket()
   {
     DEBUG_PRINTLN("TLM type error");
     DEBUG_PRINTLN(type);
+    return;
+  }
+
+  if (InBindingMode) {
+    ExitBindingMode();
   }
 
   //DEBUG_PRINTLN("TLMpacket1");

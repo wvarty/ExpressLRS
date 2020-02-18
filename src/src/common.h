@@ -16,7 +16,7 @@
 // Disable binding when connected to TX
 #define PREVENT_BIND_WHEN_CONNECTED true
 
-// Set to false to use hardcoded UID
+// Set to false to use hardcoded Unique ID
 #define USE_FLASH_FOR_UID true
 
 extern uint8_t UID[6];
