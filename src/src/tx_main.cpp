@@ -425,7 +425,7 @@ void setup()
 #ifdef LEGACY_HARDWARE
   pinMode(4, INPUT_PULLDOWN);
 #endif
-  pinMode(36, INPUT_PULLUP);
+  pinMode(GPIO_PIN_BUTTON, INPUT_PULLUP);
 
   Serial.begin(115200);
   DEBUG_PRINTLN("ExpressLRS TX Module Booted...");
@@ -506,7 +506,7 @@ void setup()
 
 void ICACHE_RAM_ATTR sampleButton()
 {
-    bool buttonValue = digitalRead(36);
+    bool buttonValue = digitalRead(GPIO_PIN_BUTTON);
 
     if (buttonValue == false && buttonPrevValue == true)
     { //falling edge

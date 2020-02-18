@@ -9,15 +9,18 @@
 #include "FHSS.h"
 #include "debug.h"
 #include "rx_LinkQuality.h"
+#include "errata.h"
 
 #ifdef PLATFORM_ESP8266
 #include "ESP8266_WebUpdate.h"
+#include "ESP8266_hwTimer.h"
 #endif
 #ifdef PLATFORM_STM32
 #include "STM32_UARTinHandler.h"
+#include "STM32_hwTimer.h"
 #endif
 
-#include "errata.h"
+hwTimer hwTimer;
 
 // LED blink rates for different modes
 #define LED_BINDING_INTERVAL 100
@@ -33,23 +36,12 @@ SX127xDriver Radio;
 CRSF crsf(Serial); //pass a serial port object to the class for it to use
 ELRS_EEPROM eeprom;
 
-//Filters//
+/// Filters ////////////////
 LPF LPF_PacketInterval(3);
 LPF LPF_Offset(3);
 LPF LPF_FreqError(3);
 LPF LPF_UplinkRSSI(5);
-
-///forward defs///
-void SetRFLinkRate(expresslrs_mod_settings_s mode);
-void InitHarwareTimer();
-void StopHWtimer();
-void HWtimerSetCallback(void (*CallbackFunc)(void));
-void HWtimerSetCallback90(void (*CallbackFunc)(void));
-void HWtimerUpdateInterval(uint32_t Interval);
-uint32_t ICACHE_RAM_ATTR HWtimerGetlastCallbackMicros();
-uint32_t ICACHE_RAM_ATTR HWtimerGetlastCallbackMicros90();
-void ICACHE_RAM_ATTR HWtimerPhaseShift(int16_t Offset);
-uint32_t ICACHE_RAM_ATTR HWtimerGetIntervalMicros();
+////////////////////////////
 
 bool InBindingMode = false;
 void EnterBindingMode();
@@ -63,14 +55,13 @@ void UpdateConnectionState(connectionState_e state);
 
 uint8_t scanIndex = 0;
 
-//uint32_t HWtimerLastcallback;
-uint32_t MeasuredHWtimerInterval;
 int32_t HWtimerError;
-int32_t HWtimerError90;
 int32_t Offset;
-int32_t Offset90;
+
 uint32_t SerialDebugPrintInterval = 250;
 uint32_t LastSerialDebugPrint = 0;
+
+bool LED = false;
 
 //// Variables Relating to Button behaviour ////
 bool buttonPrevValue = true; //default pullup
@@ -176,7 +167,7 @@ void ICACHE_RAM_ATTR HandleSendTelemetryResponse()
     }
 }
 
-void ICACHE_RAM_ATTR Test90()
+void ICACHE_RAM_ATTR HWtimerCallback()
 {
 
     if (alreadyFHSS == true)
@@ -193,11 +184,6 @@ void ICACHE_RAM_ATTR Test90()
     HandleSendTelemetryResponse();
 
     NonceRXlocal++;
-}
-
-void ICACHE_RAM_ATTR Test()
-{
-    MeasuredHWtimerInterval = micros() - HWtimerGetlastCallbackMicros();
 }
 
 void ICACHE_RAM_ATTR LostConnection()
@@ -363,47 +349,42 @@ void ICACHE_RAM_ATTR ProcessRFPacket()
     LastValidPacket = millis();
     addPacketToLQ();
 
+    HWtimerError = ((micros() - hwTimer.LastCallbackMicrosTick) % ExpressLRS_currAirRate.interval);
     Offset = LPF_Offset.update(HWtimerError - (ExpressLRS_currAirRate.interval >> 1)); //crude 'locking function' to lock hardware timer to transmitter, seems to work well enough
-    HWtimerPhaseShift((Offset >> 1) + timerOffset);
+    hwTimer.phaseShift(uint32_t((Offset >> 4) + timerOffset));
 
-    if (((NonceRXlocal + 1) % ExpressLRS_currAirRate.FHSShopInterval) == 0) //premept the FHSS if we already know we'll have to do it next timer tick.
+    if (freqerror > 0)
     {
-        int32_t freqerror = LPF_FreqError.update(Radio.GetFrequencyError());
-        //DEBUG_PRINT(freqerror);
-        //DEBUG_PRINT(" : ");
-
-        if (freqerror > 0)
+        if (FreqCorrection < FreqCorrectionMax)
         {
-            if (FreqCorrection < FreqCorrectionMax)
-            {
-                FreqCorrection += 61; //min freq step is ~ 61hz
-            }
-            else
-            {
-                FreqCorrection = FreqCorrectionMax;
-                DEBUG_PRINTLN("Max pos reasontable freq offset correction limit reached!");
-            }
+            FreqCorrection += 61; //min freq step is ~ 61hz
         }
         else
         {
-            if (FreqCorrection > FreqCorrectionMin)
-            {
-                FreqCorrection -= 61; //min freq step is ~ 61hz
-            }
-            else
-            {
-                FreqCorrection = FreqCorrectionMin;
-                DEBUG_PRINTLN("Max neg reasontable freq offset correction limit reached!");
-            }
+            FreqCorrection = FreqCorrectionMax;
+            DEBUG_PRINTLN("Max pos reasontable freq offset correction limit reached!");
         }
-
-        Radio.setPPMoffsetReg(FreqCorrection);
-
-        //DEBUG_PRINTLN(FreqCorrection);
-
-        HandleFHSS();
-        alreadyFHSS = true;
     }
+    else
+    {
+        if (FreqCorrection > FreqCorrectionMin)
+        {
+            FreqCorrection -= 61; //min freq step is ~ 61hz
+        }
+        else
+        {
+            FreqCorrection = FreqCorrectionMin;
+            DEBUG_PRINTLN("Max neg reasontable freq offset correction limit reached!");
+        }
+    }
+
+    Radio.setPPMoffsetReg(FreqCorrection);
+
+    //DEBUG_PRINTLN(FreqCorrection);
+
+    HandleFHSS();
+    alreadyFHSS = true;
+
     // DEBUG_PRINT("Offset: ");
     // DEBUG_PRINT(Offset);
     // DEBUG_PRINT(" LQ: ");
@@ -416,7 +397,7 @@ void beginWebsever()
 {
 #ifndef PLATFORM_STM32
     Radio.StopContRX();
-    StopHWtimer();
+    hwTimer.stop();
 
     BeginWebUpdate();
     webUpdateMode = true;
@@ -463,8 +444,9 @@ void ICACHE_RAM_ATTR sampleButton()
 
     if ((millis() > buttonLastPressed + BUTTON_RESET_INTERVAL) && buttonDown)
     {
-        //ESP.restart();
-        //DEBUG_PRINTLN("Setting Bootloader Bit..");
+#ifdef PLATFORM_ESP8266
+        ESP.restart();
+#endif
     }
 
     buttonPrevValue = buttonValue;
@@ -475,10 +457,10 @@ void ICACHE_RAM_ATTR SetRFLinkRate(expresslrs_mod_settings_s mode) // Set speed 
     Radio.StopContRX();
     Radio.Config(mode.bw, mode.sf, mode.cr, Radio.currFreq, Radio._syncWord);
     ExpressLRS_currAirRate = mode;
-    HWtimerUpdateInterval(mode.interval);
+    hwTimer.updateInterval(mode.interval);
     LPF_PacketInterval.init(mode.interval);
-    LPF_Offset.init(0);
-    InitHarwareTimer();
+    //LPF_Offset.init(0);
+    //InitHarwareTimer();
     Radio.RXnb();
 }
 
@@ -527,9 +509,11 @@ void setup()
     FHSSrandomiseFHSSsequence();
     Radio.SetFrequency(GetInitialFreq());
 
+    //Radio.SetSyncWord(0x122);
+
     Radio.Begin();
 
-    Radio.SetOutputPower(0b1111);
+    Radio.SetOutputPower(0b1111); //default is max power (17dBm for RX)
 
     RFnoiseFloor = MeasureNoiseFloor();
     DEBUG_PRINT("RF noise floor: ");
@@ -541,15 +525,11 @@ void setup()
     Radio.TXdoneCallback1 = &Radio.RXnb;
 
     crsf.Begin();
+    hwTimer.callbackTock = &HWtimerCallback;
+    hwTimer.init();
 
-    HWtimerSetCallback(&Test);
-    HWtimerSetCallback90(&Test90);
-    InitHarwareTimer();
     SetRFLinkRate(RF_RATE_200HZ);
-
-    DEBUG_PRINTLN("Setup completed");
-    DEBUG_PRINT("Start freq = ");
-    DEBUG_PRINTLN(GetInitialFreq());
+    hwTimer.init();
 }
 
 void loop()
@@ -579,93 +559,12 @@ void loop()
         crsf.sendLinkStatisticsToFC();
         SendLinkStatstoFCintervalLastSent = millis();
     }
-    // if (millis() > LastSerialDebugPrint + SerialDebugPrintInterval)
-    // { // add stuff here for debug print
-    //     LastSerialDebugPrint = millis();
-    //     DEBUG_PRINTLN(linkQuality);
-    //     if (LostConnection)
-    //     {
-    //         DEBUG_PRINTLN("-");
-    //     }
-    //     else
-    //     {
-    //         DEBUG_PRINTLN("+");
-    //     }
 
-    //     DEBUG_PRINT(MeasuredHWtimerInterval);
-    //     DEBUG_PRINT(" ");
-    //     DEBUG_PRINT(Offset);
-    //     DEBUG_PRINT(" ");
-    //     DEBUG_PRINT(HWtimerError);
-
-    //     DEBUG_PRINT("----");
-
-    //     DEBUG_PRINT(Offset90);
-    //     DEBUG_PRINT(" ");
-    //     DEBUG_PRINT(HWtimerError90);
-    //     DEBUG_PRINT("----");
-    //     DEBUG_PRINTLN(packetCounter);
-    // }
-
-    // if (millis() > (PacketRateLastChecked + PacketRateInterval)) //just some debug data
-    // {
-    //     //     float targetFrameRate;
-
-    //     //     if (ExpressLRS_currAirRate.TLMinterval != 0)
-    //     //     {
-    //     //         targetFrameRate = ExpressLRS_currAirRate.rate - ((ExpressLRS_currAirRate.rate) * (1.0 / ExpressLRS_currAirRate.TLMinterval));
-    //     //     }
-    //     //     else
-    //     //     {
-    //     //         targetFrameRate = ExpressLRS_currAirRate.rate;
-    //     //     }
-
-    //     PacketRateLastChecked = millis();
-    //     //     PacketRate = (float)packetCounter / (float)(PacketRateInterval);
-    //     //     linkQuality = int(((float)PacketRate / (float)targetFrameRate) * 100000.0);
-    //     //     if(linkQuality > 99) linkQuality = 99;
-
-    //     //     CRCerrorRate = (((float)CRCerrorCounter / (float)(PacketRateInterval)) * 100);
-
-    //     //     CRCerrorCounter = 0;
-    //     //     packetCounter = 0;
-
-    //     //     //DEBUG_PRINTLN(CRCerrorRate);
-    //     // }
-    //     DEBUG_PRINT(MeasuredHWtimerInterval);
-    //     DEBUG_PRINT(" ");
-    //     DEBUG_PRINT(Offset);
-    //     DEBUG_PRINT(" ");
-    //     DEBUG_PRINT(HWtimerError);
-
-    //     DEBUG_PRINT("----");
-
-    //     DEBUG_PRINT(Offset90);
-    //     DEBUG_PRINT(" ");
-    //     DEBUG_PRINT(HWtimerError90);
-    //     DEBUG_PRINT("----");
-
-    //DEBUG_PRINTLN(linkQuality);
-    //     //DEBUG_PRINTLN(packetCounter);
-    // }
-
-    // DEBUG_PRINT(MeasuredHWtimerInterval);
-    // DEBUG_PRINT(" ");
-    // DEBUG_PRINT(" ");
-    // DEBUG_PRINT(HWtimerError);
-
-    // DEBUG_PRINT("----");
-
-    // DEBUG_PRINT(Offset90);
-    // DEBUG_PRINT(" ");
-    // DEBUG_PRINT(HWtimerError90);
-    // DEBUG_PRINT("----");
-    // DEBUG_PRINTLN(packetCounter);
-    // delay(200);
-    // DEBUG_PRINT("LQ: ");
-    // DEBUG_PRINT(linkQuality);
-    // DEBUG_PRINT(" Connstate:");
-    // DEBUG_PRINTLN(connectionState);
+    if (millis() > (buttonLastSampled + buttonSampleInterval))
+    {
+        sampleButton();
+        buttonLastSampled = millis();
+    }
 
 #ifdef Auto_WiFi_On_Boot
     if ((connectionState == disconnected) && !webUpdateMode && !InBindingMode && millis() > 10000 && millis() < 11000)
