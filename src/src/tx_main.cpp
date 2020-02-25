@@ -19,6 +19,7 @@
 #define SWITCH_PACKET_SEND_INTERVAL       200
 #define SYNC_PACKET_SEND_INTERVAL_RX_LOST 250  // how often to send the switch data packet (ms) when there is no response from RX
 #define SYNC_PACKET_SEND_INTERVAL_RX_CONN 1500 // how often to send the switch data packet (ms) when there we have a connection
+#define BUTTON_BINDING_INTERVAL           2000 // hold button for 2 sec to enable webupdate mode
 ///////////////////
 
 String DebugOutput;
@@ -53,6 +54,22 @@ bool ChangeAirRateSentUpdate = false;
 
 bool WaitRXresponse = false;
 
+///// BINDING /////
+bool InBindingMode = false;
+bool FreqLocked = false;
+void EnterBindingMode();
+void ExitBindingMode();
+void CancelBindingMode();
+void PrintUID();
+void UpdateConnectionState(connectionState_e state);
+///////////////////
+
+///// BUTTON /////
+bool buttonPrevValue = true; //default pullup
+bool buttonDown = false;     //is the button current pressed down?
+uint32_t buttonLastPressed = 0;
+///////////////////
+
 ///// Not used in this version /////////////////////////////////////////////////////////////////////////////////////////////////////////
 uint8_t TelemetryWaitBuffer[7] = {0};
 
@@ -79,7 +96,9 @@ void ICACHE_RAM_ATTR ProcessTLMpacket()
   uint8_t packetAddr = (Radio.RXdataBuffer[0] & 0b11111100) >> 2;
   uint8_t TLMheader = Radio.RXdataBuffer[1];
 
-  //Serial.println("TLMpacket0");
+  if (InBindingMode) {
+    ExitBindingMode();
+  }
 
   if (packetAddr != DeviceAddr)
   {
@@ -205,6 +224,12 @@ void SetRFLinkRate(expresslrs_mod_settings_s mode) // Set speed of RF link (hz)
 
 void ICACHE_RAM_ATTR HandleFHSS()
 {
+  if (FreqLocked)
+  {
+    // Don't freq hop if we're binding
+    return;
+  }
+
   uint8_t modresult = (Radio.NonceTX) % ExpressLRS_currAirRate.FHSShopInterval;
 
   if (modresult == 0) // if it time to hop, do so.
@@ -265,7 +290,7 @@ void ICACHE_RAM_ATTR SendRCdataToRF()
   }
 
   //if (((millis() > (SyncPacketLastSent + SyncInterval)) && (Radio.currFreq == GetInitialFreq())) || ChangeAirRateRequested) //only send sync when its time and only on channel 0;
-  if ((millis() > (SyncPacketLastSent + SyncInterval)) && (Radio.currFreq == GetInitialFreq()))
+  if ((millis() > (SyncPacketLastSent + SyncInterval)) && (Radio.currFreq == GetInitialFreq()) || InBindingMode)
   {
 
     GenerateSyncPacketData();
@@ -411,8 +436,9 @@ void setup()
 {
 #ifdef TARGET_EXPRESSLRS_PCB_TX_V3_LEGACY
   pinMode(RC_SIGNAL_PULLDOWN, INPUT_PULLDOWN);
-  pinMode(GPIO_PIN_BUTTON, INPUT_PULLUP);
 #endif
+
+  pinMode(GPIO_PIN_BUTTON, INPUT_PULLUP);
 
   Serial.begin(115200);
   Serial.println("ExpressLRS TX Module Booted...");
@@ -488,26 +514,45 @@ void setup()
   crsf.Begin();
 }
 
+void ICACHE_RAM_ATTR sampleButton()
+{
+  bool buttonValue = digitalRead(GPIO_PIN_BUTTON);
+
+  if (buttonValue == false && buttonPrevValue == true)
+  { //falling edge
+    buttonLastPressed = millis();
+    buttonDown = true;
+    Radio.SetFrequency(GetInitialFreq());
+    Radio.RXnb();
+  }
+
+  if (buttonValue == true && buttonPrevValue == false) //rising edge
+  {
+    buttonDown = false;
+  }
+
+  if ((millis() > buttonLastPressed + BUTTON_BINDING_INTERVAL) && buttonDown)
+  {
+    if (!InBindingMode)
+    {
+      EnterBindingMode();
+    }
+  }
+
+  buttonPrevValue = buttonValue;
+}
+
 void loop()
 {
-
   delay(100);
 
-  // if (digitalRead(4) == 0)
-  // {
-  //   Serial.println("Switch Pressed!");
-  // }
-
-  // if (digitalRead(36) == 0)
-  // {
-  //   Serial.println("Switch Pressed!");
-  // }
+  sampleButton();
 
 #ifdef FEATURE_OPENTX_SYNC
   Serial.println(crsf.OpenTXsyncOffset);
 #endif
 
-  updateLEDs(isRXconnected, ExpressLRS_currAirRate.TLMinterval);
+  updateLEDs(isRXconnected, ExpressLRS_currAirRate.TLMinterval, InBindingMode);
 
   if (millis() > (RX_CONNECTION_LOST_TIMEOUT + LastTLMpacketRecvMillis))
   {
@@ -543,4 +588,93 @@ void loop()
     linkQuality = 99;
   }
   packetCounteRX_TX = 0;
+}
+
+void PrintUID()
+{
+    Serial.print("UID = ");
+    Serial.print(UID[3]);
+    Serial.print(UID[4]);
+    Serial.println(UID[5]);
+    Serial.print("DEV ADDR = ");
+    Serial.println(DeviceAddr);
+    Serial.print("CRCCaesarCipher = ");
+    Serial.println(CRCCaesarCipher);
+}
+
+void EnterBindingMode()
+{
+    if ((PREVENT_BIND_WHEN_CONNECTED && isRXconnected) || InBindingMode)
+    {
+        // Don't enter binding if:
+        // - we're already connected
+        // - we're already binding
+        return;
+    }
+
+    // Use binding cipher and addr
+    CRCCaesarCipher = BINDING_CIPHER;
+    DeviceAddr = BINDING_ADDR;
+
+    // Start attempting to bind
+    // Lock the RF rate and freq to the base freq while binding
+    SetRFLinkRate(RF_RATE_200HZ);
+    Radio.SetFrequency(919100000);
+    FreqLocked = true;
+
+    InBindingMode = true;
+    isRXconnected = false;
+
+    Serial.println("=== Entered binding mode ===");
+    PrintUID();
+}
+
+void ExitBindingMode()
+{
+  if (!InBindingMode)
+  {
+    // Not in binding mode
+    return;
+  }
+
+  CRCCaesarCipher = UID[4];
+  DeviceAddr = UID[5] & 0b111111;
+
+  // Revert to original packet rate
+  // and go to initial freq
+  FreqLocked = false;
+  SetRFLinkRate(RF_RATE_200HZ);
+  Radio.SetFrequency(GetInitialFreq());
+
+  InBindingMode = false;
+  isRXconnected = false;
+
+  Serial.println("=== Binding successful ===");
+  PrintUID();
+}
+
+void CancelBindingMode()
+{
+  if (!InBindingMode)
+  {
+    // Not in binding mode
+    return;
+  }
+
+  // Revert to original packet rate
+  // and go to initial freq
+  SetRFLinkRate(ExpressLRS_prevAirRate);
+  Radio.SetFrequency(GetInitialFreq());
+
+  // Revert to original cipher and addr
+  CRCCaesarCipher = UID[4];
+  DeviceAddr = UID[5] & 0b111111;
+
+  // Binding cancelled
+  // Go to a disconnected state
+  InBindingMode = false;
+  isRXconnected = false;
+
+  Serial.println("=== Binding mode cancelled ===");
+  PrintUID();
 }

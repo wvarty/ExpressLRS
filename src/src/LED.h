@@ -19,7 +19,7 @@ HslColor hslBlue(blue);
 HslColor hslWhite(white);
 HslColor hslBlack(black);
 
-void updateLEDs(uint8_t isRXconnected, uint8_t tlm)
+void updateLEDs(uint8_t isRXconnected, uint8_t tlm, bool inBindingMode)
 {
   LEDGlowIndex = millis() % 5000;
 
@@ -48,5 +48,11 @@ void updateLEDs(uint8_t isRXconnected, uint8_t tlm)
       for(int n = 0; n < numberOfLEDs; n++) strip.SetPixelColor(n, RgbColor(LEDGlowIndex, 0, 0));
     }
   }
+
+  if (inBindingMode)
+  {
+    for(int n = 0; n < numberOfLEDs; n++) strip.SetPixelColor(n, RgbColor(LEDGlowIndex, 0, LEDGlowIndex));
+  }
+
   strip.Show();
 }

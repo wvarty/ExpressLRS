@@ -103,3 +103,9 @@ uint8_t TLMratioEnumToValue(expresslrs_tlm_ratio_e enumval);
 #define SWITCH_DATA_PACKET  0b01
 #define TLM_PACKET          0b11
 #define SYNC_PACKET         0b10
+
+///// BINDING /////
+#define BINDING_CIPHER 100
+#define BINDING_ADDR   50
+#define PREVENT_BIND_WHEN_CONNECTED true // Disable binding when connected to TX
+#define USE_FLASH_FOR_UID           true // Set to false to use hardcoded Unique ID
