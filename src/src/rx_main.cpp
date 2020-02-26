@@ -6,9 +6,10 @@
 #include "LoRaRadioLib.h"
 #include "CRSF.h"
 #include "FHSS.h"
-// #include "Debug.h"
+#include "debug.h"
 #include "rx_LinkQuality.h"
 #include "errata.h"
+#include "elrs_eeprom.h"
 
 #ifdef PLATFORM_ESP8266
 #include "ESP8266_WebUpdate.h"
@@ -22,15 +23,20 @@
 
 //// CONSTANTS ////
 #define BUTTON_SAMPLE_INTERVAL          150
+#define BUTTON_BINDING_INTERVAL         100
 #define WEB_UPDATE_PRESS_INTERVAL       2000 // hold button for 2 sec to enable webupdate mode
 #define BUTTON_RESET_INTERVAL           4000 //hold button for 4 sec to reboot RX
-#define WEB_UPDATE_LED_FLASH_INTERVAL   25
 #define SEND_LINK_STATS_TO_FC_INTERVAL  100
+// LED blink rates for different modes
+#define LED_WEB_UPDATE_INTERVAL     25
+#define LED_BINDING_INTERVAL        100
+#define LED_DISCONNECTED_INTERVAL   1000
 ///////////////////
 
 hwTimer hwTimer;
 SX127xDriver Radio;
 CRSF crsf(Serial); //pass a serial port object to the class for it to use
+ELRS_EEPROM eeprom;
 
 /// Filters ////////////////
 LPF LPF_PacketInterval(3);
@@ -39,12 +45,23 @@ LPF LPF_FreqError(3);
 LPF LPF_UplinkRSSI(5);
 ////////////////////////////
 
+///// BINDING /////
+bool InBindingMode = false;
+bool FreqLocked = false;
+void EnterBindingMode();
+void ExitBindingMode();
+void CancelBindingMode();
+void PrintUID();
+///////////////////
+
 uint8_t scanIndex = 0;
 
 int32_t HWtimerError;
 int32_t Offset;
 
 bool LED = false;
+uint32_t LEDLastCycled      = 0;
+uint32_t LEDCycleInterval   = 1000;
 
 //// Variables Relating to Button behaviour ////
 bool buttonPrevValue = true; //default pullup
@@ -97,6 +114,11 @@ void ICACHE_RAM_ATTR getRFlinkInfo()
 
 void ICACHE_RAM_ATTR HandleFHSS()
 {
+    if (FreqLocked)
+    {
+        return;
+    }
+
     uint8_t modresult = (NonceRXlocal + 1) % ExpressLRS_currAirRate.FHSShopInterval;
     if (modresult != 0)
     {
@@ -280,6 +302,12 @@ void ICACHE_RAM_ATTR ProcessRFPacket()
         break;
 
     case SYNC_PACKET: //sync packet from master
+        if (InBindingMode)
+        {
+            ExitBindingMode();
+            return;
+        }
+
         if (Radio.RXdataBuffer[4] == UID[3] && Radio.RXdataBuffer[5] == UID[4] && Radio.RXdataBuffer[6] == UID[5])
         {
             if (connectionState == disconnected)
@@ -382,6 +410,14 @@ void ICACHE_RAM_ATTR sampleButton()
     if (buttonValue == true && buttonPrevValue == false) //rising edge
     {
         buttonDown = false;
+    }
+
+    if ((millis() > buttonLastPressed + BUTTON_BINDING_INTERVAL) && buttonDown)
+    {
+        if (!InBindingMode)
+        {
+            EnterBindingMode();
+        }
     }
 
     if ((millis() > buttonLastPressed + WEB_UPDATE_PRESS_INTERVAL) && buttonDown) // button held down
@@ -504,7 +540,7 @@ void loop()
     }
 
 #ifdef Auto_WiFi_On_Boot
-    if ((connectionState == disconnected) && !webUpdateMode && millis() > 10000 && millis() < 11000)
+    if ((connectionState == disconnected) && !webUpdateMode && !InBindingMode && millis() > 10000 && millis() < 11000)
     {
         beginWebsever();
     }
@@ -518,12 +554,139 @@ void loop()
     if (webUpdateMode)
     {
         HandleWebUpdate();
-        if (millis() > WEB_UPDATE_LED_FLASH_INTERVAL + webUpdateLedFlashIntervalLast)
-        {
-            digitalWrite(GPIO_PIN_LED, LED);
-            LED = !LED;
-            webUpdateLedFlashIntervalLast = millis();
-        }
     }
 #endif
+}
+
+void PrintUID()
+{
+    DEBUG_PRINT("UID = ");
+    DEBUG_PRINT(UID[3]);
+    DEBUG_PRINT(UID[4]);
+    DEBUG_PRINTLN(UID[5]);
+    DEBUG_PRINT("DEV ADDR = ");
+    DEBUG_PRINTLN(DeviceAddr);
+    DEBUG_PRINT("CRCCaesarCipher = ");
+    DEBUG_PRINTLN(CRCCaesarCipher);
+}
+
+void EnterBindingMode()
+{
+    if ((PREVENT_BIND_WHEN_CONNECTED && connectionState == connected) || InBindingMode || webUpdateMode)
+    {
+        // Don't enter binding if:
+        // - we're already connected
+        // - we're already binding
+        // - we're in web update mode
+        DEBUG_PRINTLN("Cannot enter binding mode!");
+        return;
+    }
+
+    CRCCaesarCipher = BINDING_CIPHER;
+    DeviceAddr = BINDING_ADDR;
+
+    // Lock the RF rate and freq to the base freq while binding
+    SetRFLinkRate(RF_RATE_200HZ);
+    Radio.SetFrequency(919100000);
+    FreqLocked = true;
+
+    InBindingMode = true;
+    connectionState = disconnected;
+
+    DEBUG_PRINTLN("=== Entered binding mode ===");
+    PrintUID();
+}
+
+void ExitBindingMode()
+{
+    if (!InBindingMode)
+    {
+        // Not in binding mode
+        return;
+    }
+
+    // Read UID data from TX
+    UID[3] = Radio.RXdataBuffer[4];
+    UID[4] = Radio.RXdataBuffer[5];
+    UID[5] = Radio.RXdataBuffer[6];
+    CRCCaesarCipher = UID[4];
+    DeviceAddr = UID[5] & 0b111111;
+
+    // Store UID in flash for reading on boot
+    eeprom.WriteUniqueID(UID);
+
+    // Randomise the FHSS seq using the new UID addr
+    // and start at the initial freq
+    FHSSrandomiseFHSSsequence();
+    FreqLocked = false;
+    Radio.SetFrequency(GetInitialFreq());
+
+    InBindingMode = false;
+    connectionState = disconnected;
+
+    DEBUG_PRINTLN("=== Binding successful ===");
+    PrintUID();
+}
+
+void CancelBindingMode()
+{
+    if (!InBindingMode)
+    {
+        // Not in binding mode
+        return;
+    }
+
+    // Binding cancelled
+    eeprom.ReadUniqueID(UID);
+
+    // Revert to original cipher and addr
+    CRCCaesarCipher = UID[4];
+    DeviceAddr = UID[5] & 0b111111;
+
+    InBindingMode = false;
+    connectionState = disconnected;
+
+    DEBUG_PRINTLN("=== Binding mode cancelled ===");
+    PrintUID();
+}
+
+void UpdateLEDState(bool forceOff)
+{
+    if (forceOff)
+    {
+        // Turn the LED off immediately
+        // Used on disconnect
+        LED = false;
+        digitalWrite(GPIO_PIN_LED, LED);
+        return;
+    }
+
+    if (!InBindingMode && connectionState == connected && !webUpdateMode)
+    {
+        // Turn the LED on solid if we're connected
+        LED = true;
+        digitalWrite(GPIO_PIN_LED, LED);
+        return;
+    }
+    
+    // Various flash intervals for other states
+    if (InBindingMode)
+    {
+        LEDCycleInterval = LED_BINDING_INTERVAL;
+    }
+    else if (connectionState == disconnected && !webUpdateMode)
+    {
+        LEDCycleInterval = LED_DISCONNECTED_INTERVAL;
+    }
+    else if (webUpdateMode)
+    {
+        LEDCycleInterval = LED_WEB_UPDATE_INTERVAL;
+    }
+
+    if (millis() > (LEDLastCycled + LEDCycleInterval))
+    {
+        LED = !LED;
+        digitalWrite(GPIO_PIN_LED, LED);
+        LEDLastCycled = millis();
+    }
 }
