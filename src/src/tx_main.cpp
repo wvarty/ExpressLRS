@@ -6,17 +6,26 @@
 #include "CRSF.h"
 #include "FHSS.h"
 #include "LED.h"
-#include "Debug.h"
+// #include "debug.h"
 #include "targets.h"
 
+#ifdef TARGET_EXPRESSLRS_PCB_TX_V3
 #include "soc/soc.h"
 #include "soc/rtc_cntl_reg.h"
+#endif
+
+#ifdef TARGET_R9M_TX
+#include "DAC.h"
+#include "STM32_hwTimer.h"
+R9DAC R9DAC;
+hwTimer hwTimer;
+#endif
 
 //// CONSTANTS ////
-#define RX_CONNECTION_LOST_TIMEOUT        1500 // After 1500ms of no TLM response consider that slave has lost connection
-#define PACKET_RATE_INTERVAL              500
-#define RF_MODE_CYCLE_INTERVAL            1000
-#define SWITCH_PACKET_SEND_INTERVAL       200
+#define RX_CONNECTION_LOST_TIMEOUT 1500 // After 1500ms of no TLM response consider that slave has lost connection
+#define PACKET_RATE_INTERVAL 500
+#define RF_MODE_CYCLE_INTERVAL 1000
+#define SWITCH_PACKET_SEND_INTERVAL 200
 #define SYNC_PACKET_SEND_INTERVAL_RX_LOST 250  // how often to send the switch data packet (ms) when there is no response from RX
 #define SYNC_PACKET_SEND_INTERVAL_RX_CONN 1500 // how often to send the switch data packet (ms) when there we have a connection
 #define BUTTON_BINDING_INTERVAL           2000 // hold button for 2 sec to enable webupdate mode
@@ -28,8 +37,10 @@ String DebugOutput;
 SX127xDriver Radio;
 CRSF crsf;
 
+void TimerExpired();
+
 //// Switch Data Handling ///////
-uint32_t SwitchPacketLastSent = 0;            //time in ms when the last switch data packet was sent
+uint32_t SwitchPacketLastSent = 0; //time in ms when the last switch data packet was sent
 
 ////////////SYNC PACKET/////////
 uint32_t SyncPacketLastSent = 0;
@@ -136,6 +147,8 @@ void ICACHE_RAM_ATTR ProcessTLMpacket()
     //crsf.LinkStatistics.downlink_Link_quality = Radio.currPWR;
     crsf.LinkStatistics.rf_Mode = ExpressLRS_currAirRate.enum_rate;
 
+    crsf.TLMbattSensor.voltage = (Radio.RXdataBuffer[3] << 8) + Radio.RXdataBuffer[6];
+
     crsf.sendLinkStatisticsToTX();
   }
 }
@@ -211,8 +224,12 @@ void ICACHE_RAM_ATTR GenerateSwitchChannelData()
 
 void SetRFLinkRate(expresslrs_mod_settings_s mode) // Set speed of RF link (hz)
 {
+#ifdef PLATFORM_ESP32
   Radio.TimerInterval = mode.interval;
   Radio.UpdateTimerInterval();
+#else
+  hwTimer.updateInterval(mode.interval); // TODO: Make sure this is equiv to above commented lines
+#endif
   Radio.Config(mode.bw, mode.sf, mode.cr, Radio.currFreq, Radio._syncWord);
   Radio.SetPreambleLength(mode.PreambleLen);
   ExpressLRS_prevAirRate = ExpressLRS_currAirRate;
@@ -247,6 +264,12 @@ void ICACHE_RAM_ATTR HandleTLM()
     {
       return;
     }
+
+#ifdef TARGET_R9M_TX
+    R9DAC.standby();
+    digitalWrite(GPIO_PIN_RFswitch_CONTROL, 1);
+    digitalWrite(GPIO_PIN_RFamp_APC1, 0);
+#endif
 
     Radio.RXnb();
     WaitRXresponse = true;
@@ -316,6 +339,11 @@ void ICACHE_RAM_ATTR SendRCdataToRF()
   ///// Next, Calculate the CRC and put it into the buffer /////
   uint8_t crc = CalcCRC(Radio.TXdataBuffer, 7) + CRCCaesarCipher;
   Radio.TXdataBuffer[7] = crc;
+#ifdef TARGET_R9M_TX
+  R9DAC.resume();
+  digitalWrite(GPIO_PIN_RFswitch_CONTROL, 0);
+  digitalWrite(GPIO_PIN_RFamp_APC1, 1);
+#endif
   Radio.TXnb(Radio.TXdataBuffer, 8);
 
   if (ChangeAirRateRequested)
@@ -360,7 +388,7 @@ void ICACHE_RAM_ATTR HandleUpdateParameter()
 
     case 1:
       Radio.maxPWR = 0b1000;
-      Radio.SetOutputPower(0b1111);
+      Radio.SetOutputPower(0b1000);
       Serial.println("Setpower 200 mW");
       break;
 
@@ -440,15 +468,49 @@ void setup()
 
   pinMode(GPIO_PIN_BUTTON, INPUT_PULLUP);
 
+#ifdef PLATFORM_ESP32
   Serial.begin(115200);
+#endif
+
+#ifdef TARGET_R9M_TX
+  HardwareSerial(USART2);
+  Serial.setTx(GPIO_PIN_DEBUG_TX);
+  Serial.setRx(GPIO_PIN_DEBUG_RX);
+  Serial.begin(115200);
+
+  // Annoying startup beeps
+  pinMode(GPIO_PIN_BUZZER, OUTPUT);
+  const int beepFreq[] = {659, 659, 659, 523, 659, 783, 392};
+  const int beepDurations[] = {150, 300, 300, 100, 300, 550, 575};
+  for (int i = 0; i < 7; i++)
+  {
+    tone(GPIO_PIN_BUZZER, beepFreq[i], beepDurations[i]);
+    delay(beepDurations[i]);
+    noTone(GPIO_PIN_BUZZER);
+  }
+
+  pinMode(GPIO_PIN_RFswitch_CONTROL, OUTPUT);
+  pinMode(GPIO_PIN_RFamp_APC1, OUTPUT);
+  digitalWrite(GPIO_PIN_RFamp_APC1, HIGH);
+
+  R9DAC.init(GPIO_PIN_SDA, GPIO_PIN_SCL, 0b0001100); // used to control ADC which sets PA output
+  R9DAC.setPower(R9_PWR_100mW);
+
+  crsf.connected = &hwTimer.init; // it will auto init when it detects UART connection
+  crsf.disconnected = &hwTimer.stop;
+  crsf.RecvParameterUpdate = &ParamUpdateReq;
+  hwTimer.callbackTock = &TimerExpired;
+#endif
+
   Serial.println("ExpressLRS TX Module Booted...");
+
+#ifdef TARGET_EXPRESSLRS_PCB_TX_V3
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); //disable brownout detector
 
   strip.Begin();
 
   // Get base mac address
   esp_read_mac(baseMac, ESP_MAC_WIFI_STA);
-
   // Print base mac address
   // This should be copied to common.h and is used to generate a unique hop sequence, DeviceAddr, and CRC.
   // UID[0..2] are OUI (organisationally unique identifier) and are not ESP32 unique.  Do not use!
@@ -468,6 +530,7 @@ void setup()
   Serial.print(baseMac[5]);
   Serial.println("};");
   Serial.println("");
+#endif
 
   FHSSrandomiseFHSSsequence();
 
@@ -504,14 +567,11 @@ void setup()
 #ifndef One_Bit_Switches
   crsf.RCdataCallback1 = &CheckChannels5to8Change;
 #endif
-  crsf.connected = &Radio.StartTimerTask;
-  crsf.disconnected = &Radio.StopTimerTask;
-  crsf.RecvParameterUpdate = &ParamUpdateReq;
 
   Radio.Begin();
-  SetRFLinkRate(RF_RATE_200HZ);
-  // SetRFLinkRate(RF_RATE_100HZ);
   crsf.Begin();
+
+  SetRFLinkRate(RF_RATE_200HZ);
 }
 
 void ICACHE_RAM_ATTR sampleButton()
@@ -549,7 +609,7 @@ void loop()
   sampleButton();
 
 #ifdef FEATURE_OPENTX_SYNC
-  Serial.println(crsf.OpenTXsyncOffset);
+  //Serial.println(crsf.OpenTXsyncOffset);
 #endif
 
   updateLEDs(isRXconnected, ExpressLRS_currAirRate.TLMinterval, InBindingMode);
@@ -588,6 +648,17 @@ void loop()
     linkQuality = 99;
   }
   packetCounteRX_TX = 0;
+
+#ifdef TARGET_R9M_TX
+  crsf.STM32handleUARTin();
+  crsf.sendSyncPacketToTX();
+  crsf.STM32wdtUART();
+#endif
+}
+
+void ICACHE_RAM_ATTR TimerExpired()
+{
+  SendRCdataToRF();
 }
 
 void PrintUID()
