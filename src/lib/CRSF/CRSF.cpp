@@ -46,9 +46,11 @@ bool CRSF::CRSFstate = false;
 bool CRSF::IsUARTslowBaudrate = false;
 
 uint32_t CRSF::lastUARTpktTime = 0;
-uint32_t CRSF::lastUARTbuadChangeTime = 0;
-uint32_t CRSF::lastUARTbuadChangeInterval = 1000; // for the UART wdt, every 1000ms we change bauds when connect is lost
-uint32_t CRSF::crsfUARTtimeout = 100;
+uint32_t CRSF::UARTwdtLastChecked = 0;
+uint32_t CRSF::UARTwdtInterval = 1000; // for the UART wdt, every 1000ms we change bauds when connect is lost
+
+uint32_t CRSF::GoodPktsCount = 0;
+uint32_t CRSF::BadPktsCount = 0;
 
 volatile uint8_t CRSF::SerialInPacketLen = 0;                     // length of the CRSF packet as measured
 volatile uint8_t CRSF::SerialInPacketPtr = 0;                     // index where we are reading/writing
@@ -105,6 +107,73 @@ void ICACHE_RAM_ATTR CRSF::sendLinkStatisticsToTX()
     {
         SerialOutFIFO.push(LinkStatisticsFrameLength + 4); // length
         SerialOutFIFO.pushBytes(outBuffer, LinkStatisticsFrameLength + 4);
+    }
+}
+
+void ICACHE_RAM_ATTR sendSetVTXchannel(uint8_t band, uint8_t channel)
+{
+    // this is an 'extended header frame'
+
+    uint8_t outBuffer[VTXcontrolFrameLength + 4] = {0};
+
+    outBuffer[0] = CRSF_ADDRESS_FLIGHT_CONTROLLER;
+    outBuffer[1] = VTXcontrolFrameLength + 2;
+    outBuffer[2] = CRSF_FRAMETYPE_COMMAND;
+    outBuffer[3] = CRSF_ADDRESS_FLIGHT_CONTROLLER;
+    outBuffer[4] = CRSF_ADDRESS_CRSF_RECEIVER;
+    /////////////////////////////////////////////
+    outBuffer[5] = CRSF_ADDRESS_FLIGHT_CONTROLLER;
+    outBuffer[6] = CRSF_ADDRESS_CRSF_RECEIVER;
+    outBuffer[7] = 0x08; // vtx command
+    ////////////////////////////////////////////
+    outBuffer[8] = channel + 8 * band;
+    outBuffer[9] = 0x00;
+    outBuffer[10] = 0x00;
+    outBuffer[11] = 0x00;
+    outBuffer[12] = 0x00;
+    outBuffer[13] = 0x00;
+
+    uint8_t crc1 = CalcCRCcmd(&outBuffer[2], VTXcontrolFrameLength + 1);
+
+    outBuffer[14] = crc1;
+
+    uint8_t crc2 = CalcCRC(&outBuffer[2], VTXcontrolFrameLength + 2);
+
+    outBuffer[15] = crc2;
+
+    if (CRSF::CRSFstate)
+    {
+        SerialOutFIFO.push(VTXcontrolFrameLength + 4); // length
+        SerialOutFIFO.pushBytes(outBuffer, VTXcontrolFrameLength + 4);
+    }
+}
+
+void ICACHE_RAM_ATTR CRSF::sendLUAresponse(uint8_t val1, uint8_t val2, uint8_t val3, uint8_t val4)
+{
+#define LUArespLength 6
+
+    uint8_t outBuffer[LUArespLength + 4] = {0};
+
+    outBuffer[0] = CRSF_ADDRESS_RADIO_TRANSMITTER;
+    outBuffer[1] = LUArespLength + 2;
+    outBuffer[2] = CRSF_FRAMETYPE_PARAMETER_WRITE;
+
+    outBuffer[3] = CRSF_ADDRESS_RADIO_TRANSMITTER;
+    outBuffer[4] = CRSF_ADDRESS_CRSF_TRANSMITTER;
+
+    outBuffer[5] = val1;
+    outBuffer[6] = val2;
+    outBuffer[7] = val3;
+    outBuffer[8] = val4;
+
+    uint8_t crc = CalcCRC(&outBuffer[2], LUArespLength + 1);
+
+    outBuffer[LUArespLength + 3] = crc;
+
+    if (CRSF::CRSFstate)
+    {
+        SerialOutFIFO.push(LUArespLength + 4); // length
+        SerialOutFIFO.pushBytes(outBuffer, LUArespLength + 4);
     }
 }
 
@@ -435,26 +504,37 @@ void ICACHE_RAM_ATTR CRSF::sendSyncPacketToTX(void *pvParameters) // in values i
 
         void ICACHE_RAM_ATTR CRSF::STM32wdtUART()
         {
-            if ((millis() > (lastUARTpktTime + crsfUARTtimeout)) && (millis() > (lastUARTbuadChangeTime + lastUARTbuadChangeInterval)))
+            if (millis() > (UARTwdtLastChecked + UARTwdtInterval))
             {
-                if (CRSFstate == true)
+                if (BadPktsCount >= GoodPktsCount)
                 {
-                    Serial.println("CRSF UART Connected");
-                    disconnected();
-                    CRSFstate = false;
+                    Serial.println("Too many bad UART RX packets! Bad:Good = ");-
+                    Serial.print(BadPktsCount);
+                    Serial.print(":");
+                    Serial.println(GoodPktsCount);
+
+                    if (CRSFstate == true)
+                    {
+                        Serial.println("CRSF UART Connected");
+                        disconnected();
+                        CRSFstate = false;
+                    }
+                    if (IsUARTslowBaudrate)
+                    {
+                        CRSF::Port.begin(CRSF_OPENTX_BAUDRATE);
+                        Serial.println("UART WDT: Switch to 400000 baud");
+                    }
+                    else
+                    {
+                        CRSF::Port.begin(CRSF_OPENTX_SLOW_BAUDRATE);
+                        Serial.println("UART WDT: Switch to 115000 baud");
+                    }
+                    IsUARTslowBaudrate = !IsUARTslowBaudrate;
                 }
-                if (IsUARTslowBaudrate)
-                {
-                    CRSF::Port.begin(CRSF_OPENTX_BAUDRATE);
-                    Serial.println("UART WDT: Switch to 400000 baud");
-                }
-                else
-                {
-                    CRSF::Port.begin(CRSF_OPENTX_SLOW_BAUDRATE);
-                    Serial.println("UART WDT: Switch to 115000 baud");
-                }
-                IsUARTslowBaudrate = !IsUARTslowBaudrate;
-                lastUARTbuadChangeTime = millis();
+
+                UARTwdtLastChecked = millis();
+                BadPktsCount = 0;
+                GoodPktsCount = 0;
             }
         }
 
@@ -493,19 +573,21 @@ void ICACHE_RAM_ATTR CRSF::sendSyncPacketToTX(void *pvParameters) // in values i
                         {
                             delayMicroseconds(100);
                             CRSF::STM32handleUARTout();
+                            lastUARTpktTime = millis();
+                            GoodPktsCount++;
                         }
-                        lastUARTpktTime = millis();
+
                         SerialInPacketPtr = 0;
                         CRSFframeActive = false;
                     }
                     else
                     {
-                        Serial.println("CRC failure");
-                        Serial.println(SerialInPacketPtr, HEX);
-                        Serial.print("Expected: ");
-                        Serial.println(CalculatedCRC, HEX);
-                        Serial.print("Got: ");
-                        Serial.println(inChar, HEX);
+                        Serial.println("UART CRC failure");
+                        // Serial.println(SerialInPacketPtr, HEX);
+                        // Serial.print("Expected: ");
+                        // Serial.println(CalculatedCRC, HEX);
+                        // Serial.print("Got: ");
+                        // Serial.println(inChar, HEX);
                         for (int i = 0; i < SerialInPacketLen + 2; i++)
                         {
                             Serial.print(SerialInBuffer[i], HEX);
@@ -515,10 +597,12 @@ void ICACHE_RAM_ATTR CRSF::sendSyncPacketToTX(void *pvParameters) // in values i
                         Serial.println();
                         CRSFframeActive = false;
                         SerialInPacketPtr = 0;
+                        Port.flush();
                         while (CRSF::Port.available())
                         {
                             CRSF::Port.read(); // dunno why but the flush() method wasn't working
                         }
+                        BadPktsCount++;
                     }
                 }
             }
@@ -539,8 +623,12 @@ void ICACHE_RAM_ATTR CRSF::sendSyncPacketToTX(void *pvParameters) // in values i
                     SerialOutFIFO.popBytes(OutData, OutPktLen);
                     CRSF::Port.write(OutData, OutPktLen); // write the packet out
                     CRSF::Port.flush();
-
                     digitalWrite(BUFFER_OE, LOW);
+
+                    while (CRSF::Port.available())
+                    {
+                        CRSF::Port.read(); // dunno why but the flush() method wasn't working
+                    }
                 }
             }
         }

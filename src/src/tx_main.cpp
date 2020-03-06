@@ -9,6 +9,11 @@
 // #include "debug.h"
 #include "targets.h"
 
+#include <SoftwareSerial.h>
+
+#include "button.h"
+Button button;
+
 #ifdef TARGET_EXPRESSLRS_PCB_TX_V3
 #include "soc/soc.h"
 #include "soc/rtc_cntl_reg.h"
@@ -145,7 +150,7 @@ void ICACHE_RAM_ATTR ProcessTLMpacket()
     crsf.LinkStatistics.downlink_RSSI = 120 + Radio.LastPacketRSSI;
     crsf.LinkStatistics.downlink_Link_quality = linkQuality;
     //crsf.LinkStatistics.downlink_Link_quality = Radio.currPWR;
-    crsf.LinkStatistics.rf_Mode = ExpressLRS_currAirRate.enum_rate;
+    crsf.LinkStatistics.rf_Mode = 4 - ExpressLRS_currAirRate.enum_rate;
 
     crsf.TLMbattSensor.voltage = (Radio.RXdataBuffer[3] << 8) + Radio.RXdataBuffer[6];
 
@@ -222,7 +227,7 @@ void ICACHE_RAM_ATTR GenerateSwitchChannelData()
   Radio.TXdataBuffer[6] = FHSSgetCurrIndex();
 }
 
-void SetRFLinkRate(expresslrs_mod_settings_s mode) // Set speed of RF link (hz)
+void ICACHE_RAM_ATTR SetRFLinkRate(expresslrs_mod_settings_s mode) // Set speed of RF link (hz)
 {
 #ifdef PLATFORM_ESP32
   Radio.TimerInterval = mode.interval;
@@ -237,6 +242,27 @@ void SetRFLinkRate(expresslrs_mod_settings_s mode) // Set speed of RF link (hz)
   crsf.RequestedRCpacketInterval = ExpressLRS_currAirRate.interval;
   DebugOutput += String(mode.rate) + "Hz";
   isRXconnected = false;
+  //R9DAC.resume();
+}
+
+uint8_t ICACHE_RAM_ATTR decRFLinkRate()
+{
+  Serial.println("dec");
+  if ((uint8_t)ExpressLRS_currAirRate.enum_rate < MaxRFrate)
+  {
+    SetRFLinkRate(ExpressLRS_AirRateConfig[(uint8_t)ExpressLRS_currAirRate.enum_rate + 1]);
+  }
+  return (uint8_t)ExpressLRS_currAirRate.enum_rate;
+}
+
+uint8_t ICACHE_RAM_ATTR incRFLinkRate()
+{
+  Serial.println("inc");
+  if ((uint8_t)ExpressLRS_currAirRate.enum_rate > 0)
+  {
+    SetRFLinkRate(ExpressLRS_AirRateConfig[(uint8_t)ExpressLRS_currAirRate.enum_rate - 1]);
+  }
+  return (uint8_t)ExpressLRS_currAirRate.enum_rate;
 }
 
 void ICACHE_RAM_ATTR HandleFHSS()
@@ -266,7 +292,7 @@ void ICACHE_RAM_ATTR HandleTLM()
     }
 
 #ifdef TARGET_R9M_TX
-    R9DAC.standby();
+    //R9DAC.standby(); //takes too long
     digitalWrite(GPIO_PIN_RFswitch_CONTROL, 1);
     digitalWrite(GPIO_PIN_RFamp_APC1, 0);
 #endif
@@ -340,7 +366,7 @@ void ICACHE_RAM_ATTR SendRCdataToRF()
   uint8_t crc = CalcCRC(Radio.TXdataBuffer, 7) + CRCCaesarCipher;
   Radio.TXdataBuffer[7] = crc;
 #ifdef TARGET_R9M_TX
-  R9DAC.resume();
+  //R9DAC.resume(); takes too long
   digitalWrite(GPIO_PIN_RFswitch_CONTROL, 0);
   digitalWrite(GPIO_PIN_RFamp_APC1, 1);
 #endif
@@ -366,11 +392,26 @@ void ICACHE_RAM_ATTR HandleUpdateParameter()
 
   switch (crsf.ParameterUpdateData[0])
   {
+  case 0: // send all params
+    Serial.println("send all");
+    crsf.sendLUAresponse((ExpressLRS_currAirRate.enum_rate + 2), ExpressLRS_currAirRate.TLMinterval + 1, 7, 1);
+    break;
   case 1:
-    if (ExpressLRS_currAirRate.enum_rate != (expresslrs_RFrates_e)crsf.ParameterUpdateData[1])
+    // if (ExpressLRS_currAirRate.enum_rate != (expresslrs_RFrates_e)crsf.ParameterUpdateData[1])
+    // {
+    //   SetRFLinkRate(ExpressLRS_AirRateConfig[crsf.ParameterUpdateData[1]]);
+    // }
+    //crsf.sendLUAresponse(0x01, (uint8_t)random(1, 5));
+    if (crsf.ParameterUpdateData[1] == 0)
     {
-      SetRFLinkRate(ExpressLRS_AirRateConfig[crsf.ParameterUpdateData[1]]);
+      uint8_t newRate = decRFLinkRate();
     }
+    else if (crsf.ParameterUpdateData[1] == 1)
+    {
+      uint8_t newRate = incRFLinkRate();
+    }
+    Serial.println(ExpressLRS_currAirRate.enum_rate);
+    crsf.sendLUAresponse((ExpressLRS_currAirRate.enum_rate + 2), ExpressLRS_currAirRate.TLMinterval + 1, 7, 1);
     break;
 
   case 2:
@@ -432,22 +473,6 @@ void ICACHE_RAM_ATTR HandleUpdateParameter()
   UpdateParamReq = false;
 }
 
-// void ICACHE_RAM_ATTR IncreasePower()
-// {
-//   if (Radio.currPWR < Radio.maxPWR)
-//   {
-//     Radio.SetOutputPower(Radio.currPWR + 1);
-//   }
-// }
-
-// void ICACHE_RAM_ATTR DecreasePower()
-// {
-//   if (Radio.currPWR > 0)
-//   {
-//     Radio.SetOutputPower(Radio.currPWR - 1);
-//   }
-// }
-
 void DetectOtherRadios()
 {
   Radio.SetFrequency(GetInitialFreq());
@@ -470,6 +495,12 @@ void setup()
 
 #ifdef PLATFORM_ESP32
   Serial.begin(115200);
+
+  crsf.connected = &Radio.StartTimerTask;
+  crsf.disconnected = &Radio.StopTimerTask;
+  crsf.RecvParameterUpdate = &ParamUpdateReq;
+  Radio.TimerDoneCallback = &TimerExpired;
+  button.init(GPIO_PIN_BUTTON, false);
 #endif
 
 #ifdef TARGET_R9M_TX
@@ -482,6 +513,7 @@ void setup()
   pinMode(GPIO_PIN_BUZZER, OUTPUT);
   const int beepFreq[] = {659, 659, 659, 523, 659, 783, 392};
   const int beepDurations[] = {150, 300, 300, 100, 300, 550, 575};
+
   for (int i = 0; i < 7; i++)
   {
     tone(GPIO_PIN_BUZZER, beepFreq[i], beepDurations[i]);
@@ -489,12 +521,17 @@ void setup()
     noTone(GPIO_PIN_BUZZER);
   }
 
+  pinMode(GPIO_PIN_LED_GREEN, OUTPUT);
+  pinMode(GPIO_PIN_LED_RED, OUTPUT);
+
   pinMode(GPIO_PIN_RFswitch_CONTROL, OUTPUT);
   pinMode(GPIO_PIN_RFamp_APC1, OUTPUT);
   digitalWrite(GPIO_PIN_RFamp_APC1, HIGH);
 
   R9DAC.init(GPIO_PIN_SDA, GPIO_PIN_SCL, 0b0001100); // used to control ADC which sets PA output
-  R9DAC.setPower(R9_PWR_100mW);
+  R9DAC.setPower(R9_PWR_50mW);
+
+  button.init(GPIO_PIN_BUTTON, true); // r9 tx appears to be active high
 
   crsf.connected = &hwTimer.init; // it will auto init when it detects UART connection
   crsf.disconnected = &hwTimer.stop;
@@ -562,11 +599,11 @@ void setup()
   Radio.TXdoneCallback3 = &HandleUpdateParameter;
   //Radio.TXdoneCallback4 = &NULL;
 
-  Radio.TimerDoneCallback = &SendRCdataToRF;
-
 #ifndef One_Bit_Switches
   crsf.RCdataCallback1 = &CheckChannels5to8Change;
 #endif
+
+  button.buttonShortPress = &EnterBindingMode;
 
   Radio.Begin();
   crsf.Begin();
@@ -574,69 +611,30 @@ void setup()
   SetRFLinkRate(RF_RATE_200HZ);
 }
 
-void ICACHE_RAM_ATTR sampleButton()
-{
-  bool buttonValue = digitalRead(GPIO_PIN_BUTTON);
-
-  if (buttonValue == false && buttonPrevValue == true)
-  { //falling edge
-    buttonLastPressed = millis();
-    buttonDown = true;
-    Radio.SetFrequency(GetInitialFreq());
-    Radio.RXnb();
-  }
-
-  if (buttonValue == true && buttonPrevValue == false) //rising edge
-  {
-    buttonDown = false;
-  }
-
-  if ((millis() > buttonLastPressed + BUTTON_BINDING_INTERVAL) && buttonDown)
-  {
-    if (!InBindingMode)
-    {
-      EnterBindingMode();
-    }
-  }
-
-  buttonPrevValue = buttonValue;
-}
-
 void loop()
 {
   delay(100);
-
-  sampleButton();
 
 #ifdef FEATURE_OPENTX_SYNC
   //Serial.println(crsf.OpenTXsyncOffset);
 #endif
 
-  updateLEDs(isRXconnected, ExpressLRS_currAirRate.TLMinterval, InBindingMode);
+  //updateLEDs(isRXconnected, ExpressLRS_currAirRate.TLMinterval);
 
   if (millis() > (RX_CONNECTION_LOST_TIMEOUT + LastTLMpacketRecvMillis))
   {
     isRXconnected = false;
+#ifdef TARGET_R9M_TX
+    digitalWrite(GPIO_PIN_LED_RED, LOW);
+#endif
   }
   else
   {
     isRXconnected = true;
+#ifdef TARGET_R9M_TX
+    digitalWrite(GPIO_PIN_LED_RED, HIGH);
+#endif
   }
-
-  //if (millis() > (PacketRateLastChecked + PacketRateInterval)//just some debug data
-  //{
-  // if (isRXconnected)
-  // {
-  //   if ((Radio.RXdataBuffer[2] < 30 || Radio.RXdataBuffer[4] < 10))
-  //   {
-  //     IncreasePower();
-  //   }
-  //   if (Radio.RXdataBuffer[2] > 60 || Radio.RXdataBuffer[4] > 40)
-  //   {
-  //     DecreasePower();
-  //   }
-  //   crsf.sendLinkStatisticsToTX();
-  // }
 
   float targetFrameRate = (ExpressLRS_currAirRate.rate * (1.0 / TLMratioEnumToValue(ExpressLRS_currAirRate.TLMinterval)));
   PacketRateLastChecked = millis();
@@ -653,6 +651,7 @@ void loop()
   crsf.STM32handleUARTin();
   crsf.sendSyncPacketToTX();
   crsf.STM32wdtUART();
+  button.handle();
 #endif
 }
 
@@ -683,6 +682,8 @@ void EnterBindingMode()
         return;
     }
 
+    digitalWrite(GPIO_PIN_LED_GREEN, HIGH);
+
     // Use binding cipher and addr
     CRCCaesarCipher = BINDING_CIPHER;
     DeviceAddr = BINDING_ADDR;
@@ -707,6 +708,8 @@ void ExitBindingMode()
     // Not in binding mode
     return;
   }
+
+  digitalWrite(GPIO_PIN_LED_GREEN, LOW);
 
   CRCCaesarCipher = UID[4];
   DeviceAddr = UID[5] & 0b111111;
