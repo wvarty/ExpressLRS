@@ -27,7 +27,7 @@ connectionState_e connectionStatePrev = disconnected;
 
 //uint8_t UID[6] = {48, 174, 164, 200, 100, 50};
 //uint8_t UID[6] = {180, 230, 45, 152, 126, 65}; //sandro unique ID
-uint8_t UID[6] = {180, 230, 45, 152, 125, 173}; // Wez's unique ID
+uint8_t UID[6] = {184, 187, 37, 127, 96, 237}; // Wez's unique ID
 
 uint8_t CRCCaesarCipher = UID[4];
 uint8_t DeviceAddr = UID[5] & 0b111111; // temporarily based on mac until listen before assigning method merged

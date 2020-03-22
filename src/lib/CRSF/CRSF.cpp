@@ -506,7 +506,7 @@ void ICACHE_RAM_ATTR CRSF::sendSyncPacketToTX(void *pvParameters) // in values i
         {
             if (millis() > (UARTwdtLastChecked + UARTwdtInterval))
             {
-                if (BadPktsCount >= GoodPktsCount)
+                if (GoodPktsCount > 0 && BadPktsCount > 0 && BadPktsCount >= GoodPktsCount)
                 {
                     Serial.println("Too many bad UART RX packets! Bad:Good = ");-
                     Serial.print(BadPktsCount);
@@ -515,7 +515,7 @@ void ICACHE_RAM_ATTR CRSF::sendSyncPacketToTX(void *pvParameters) // in values i
 
                     if (CRSFstate == true)
                     {
-                        Serial.println("CRSF UART Connected");
+                        Serial.println("Disconnecting from CRSF UART...");
                         disconnected();
                         CRSFstate = false;
                     }
@@ -557,6 +557,7 @@ void ICACHE_RAM_ATTR CRSF::sendSyncPacketToTX(void *pvParameters) // in values i
 
                 if (SerialInPacketPtr == 64) // we reached the maximum allowable packet length, so start again because shit fucked up hey.
                 {
+                    Serial.println("CRSF packet size overflow!");
                     SerialInPacketPtr = 0;
                 }
 
@@ -582,19 +583,17 @@ void ICACHE_RAM_ATTR CRSF::sendSyncPacketToTX(void *pvParameters) // in values i
                     }
                     else
                     {
-                        Serial.println("UART CRC failure");
-                        // Serial.println(SerialInPacketPtr, HEX);
-                        // Serial.print("Expected: ");
-                        // Serial.println(CalculatedCRC, HEX);
-                        // Serial.print("Got: ");
-                        // Serial.println(inChar, HEX);
+                        Serial.println("CRSF UART CRC failure! Expected: ");
+                        Serial.print(CalculatedCRC, HEX);
+                        Serial.print(" Got: ");
+                        Serial.println(inChar, HEX);
                         for (int i = 0; i < SerialInPacketLen + 2; i++)
                         {
                             Serial.print(SerialInBuffer[i], HEX);
                             Serial.print(" ");
                         }
                         Serial.println();
-                        Serial.println();
+
                         CRSFframeActive = false;
                         SerialInPacketPtr = 0;
                         Port.flush();

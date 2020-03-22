@@ -80,6 +80,8 @@ uint32_t PacketInterval;
 uint32_t RFmodeLastCycled = 0;
 ///////////////////////////////////////
 
+void updateRFConnectionState(connectionState_e newState);
+
 void ICACHE_RAM_ATTR getRFlinkInfo()
 {
     int8_t LastRSSI = Radio.GetLastPacketRSSI();
@@ -163,8 +165,7 @@ void ICACHE_RAM_ATTR LostConnection()
         return; // Already disconnected
     }
 
-    connectionStatePrev = connectionState;
-    connectionState = disconnected; //set lost connection
+    updateRFConnectionState(disconnected); //set lost connection
     LPF_FreqError.init(0);
 
     digitalWrite(GPIO_PIN_LED, 0);        // turn off led
@@ -179,8 +180,7 @@ void ICACHE_RAM_ATTR LostConnection()
 
 void ICACHE_RAM_ATTR TentativeConnection()
 {
-    connectionStatePrev = connectionState;
-    connectionState = tentative;
+    updateRFConnectionState(tentative);
     Serial.println("tentative conn");
 }
 
@@ -191,8 +191,7 @@ void ICACHE_RAM_ATTR GotConnection()
         return; // Already connected
     }
 
-    connectionStatePrev = connectionState;
-    connectionState = connected; //we got a packet, therefore no lost connection
+    updateRFConnectionState(connected); //we got a packet, therefore no lost connection
 
     RFmodeLastCycled = millis();   // give another 3 sec for loc to occur.
     digitalWrite(GPIO_PIN_LED, 1); // turn on led
@@ -530,4 +529,10 @@ void loop()
         }
     }
 #endif
+}
+
+void updateRFConnectionState(connectionState_e newState)
+{
+    connectionStatePrev = connectionState;
+    connectionState = newState;
 }
