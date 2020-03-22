@@ -574,8 +574,12 @@ void setup()
 
   FHSSrandomiseFHSSsequence();
 
-#ifdef Regulatory_Domain_AU_915
-  DEBUG_PRINTLN("Setting 915MHz Mode");
+#if defined Regulatory_Domain_AU_915 || defined Regulatory_Domain_EU_868
+  #ifdef Regulatory_Domain_AU_915
+    DEBUG_PRINTLN("Setting 915MHz Mode");
+  #else
+    DEBUG_PRINTLN("Setting 868MHz Mode");
+  #endif
   Radio.RFmodule = RFMOD_SX1276; //define radio module here
 #ifdef TARGET_100mW_MODULE
   Radio.SetOutputPower(0b1111); // 20dbm = 100mW
@@ -587,7 +591,7 @@ void setup()
                                 // Radio.SetOutputPower(0b1100); // 27dbm = 500mW
                                 // Radio.SetOutputPower(0b1111); // 30dbm = 1000mW
 #endif
-#elif defined Regulatory_Domain_AU_433
+#elif defined Regulatory_Domain_AU_433 || defined Regulatory_Domain_EU_433
   DEBUG_PRINTLN("Setting 433MHz Mode");
   Radio.RFmodule = RFMOD_SX1278; //define radio module here
   Radio.SetOutputPower(0b1111);
@@ -659,28 +663,6 @@ void loop()
   crsf.STM32wdtUART();
   button.handle();
 #endif
-
-  if (millis() % 100)
-  {
-    // Serial.print("VARS"); Serial.print(", ");
-    // Serial.print(connectionState == connected); Serial.print(", ");
-    // Serial.print(crsf.OpenTXsyncOffset);  Serial.print(", ");
-    // Serial.print(FHSSgetCurrIndex());  Serial.print(", ");
-    // Serial.print(SwitchPacketLastSent); Serial.print(", ");
-    // Serial.print(LastTLMpacketRecvMillis); Serial.print(", ");
-    // Serial.print(packetCounteRX_TX); Serial.print(", ");
-    // Serial.print(targetFrameRate); Serial.print(", ");
-    // Serial.print(PacketRateLastChecked); Serial.print(", ");
-    // Serial.print(PacketRate); Serial.print(", ");
-    // Serial.print(linkQuality); Serial.print(", ");
-    // Serial.print(RFmodeLastCycled); Serial.print(", ");
-    // Serial.print(UpdateParamReq); Serial.print(", ");
-    // Serial.print(Channels5to8Changed); Serial.print(", ");
-    // Serial.print(ChangeAirRateRequested); Serial.print(", ");
-    // Serial.print(ChangeAirRateSentUpdate); Serial.print(", ");
-    // Serial.print(WaitRXresponse);
-    Serial.println(millis());
-  }
 }
 
 void ICACHE_RAM_ATTR TimerExpired()
