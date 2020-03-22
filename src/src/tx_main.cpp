@@ -95,7 +95,7 @@ void ICACHE_RAM_ATTR ProcessTLMpacket()
 
   if (packetAddr != DeviceAddr)
   {
-    DEBUG_PRINT("TLM device address error: expected ");
+    DEBUG_PRINT("[ERROR] TLM device address error: expected ");
     DEBUG_PRINT(DeviceAddr);
     DEBUG_PRINT(" but received ");
     DEBUG_PRINTLN(packetAddr);
@@ -104,7 +104,7 @@ void ICACHE_RAM_ATTR ProcessTLMpacket()
 
   if ((inCRC != calculatedCRC))
   {
-    DEBUG_PRINT("TLM CRC error: expected ");
+    DEBUG_PRINT("[ERROR] TLM CRC error: expected ");
     DEBUG_PRINT(calculatedCRC);
     DEBUG_PRINT(" but received ");
     DEBUG_PRINTLN(inCRC);
@@ -142,7 +142,7 @@ void ICACHE_RAM_ATTR ProcessTLMpacket()
 
     crsf.sendLinkStatisticsToTX();
 
-    DEBUG_PRINT("Received TLM packet with RSSI = ");
+    DEBUG_PRINT("[INFO] Received TLM packet with RSSI = ");
     DEBUG_PRINT(Radio.RXdataBuffer[2]);
     DEBUG_PRINT(" LQ = ");
     DEBUG_PRINT(Radio.RXdataBuffer[5]);
@@ -222,7 +222,7 @@ void ICACHE_RAM_ATTR GenerateSwitchChannelData()
 
 void ICACHE_RAM_ATTR SetRFLinkRate(expresslrs_mod_settings_s mode) // Set speed of RF link (hz)
 {
-  DEBUG_PRINT("Setting RF link rate to mode ");
+  DEBUG_PRINT("[INFO] Setting RF link rate to mode ");
   DEBUG_PRINT(4 - mode.enum_rate);
   DEBUG_PRINT(" with a freq of ");
   DEBUG_PRINT(mode.rate);
@@ -246,7 +246,7 @@ void ICACHE_RAM_ATTR SetRFLinkRate(expresslrs_mod_settings_s mode) // Set speed 
 
 uint8_t ICACHE_RAM_ATTR decRFLinkRate()
 {
-  DEBUG_PRINTLN("Decreasing RF link rate...");
+  DEBUG_PRINTLN("[INFO] Decreasing RF link rate...");
   if ((uint8_t)ExpressLRS_currAirRate.enum_rate < MaxRFrate)
   {
     SetRFLinkRate(ExpressLRS_AirRateConfig[(uint8_t)ExpressLRS_currAirRate.enum_rate + 1]);
@@ -256,7 +256,7 @@ uint8_t ICACHE_RAM_ATTR decRFLinkRate()
 
 uint8_t ICACHE_RAM_ATTR incRFLinkRate()
 {
-  DEBUG_PRINTLN("Increasing RF link rate...");
+  DEBUG_PRINTLN("[INFO] Increasing RF link rate...");
   if ((uint8_t)ExpressLRS_currAirRate.enum_rate > 0)
   {
     SetRFLinkRate(ExpressLRS_AirRateConfig[(uint8_t)ExpressLRS_currAirRate.enum_rate - 1]);
@@ -270,7 +270,7 @@ void ICACHE_RAM_ATTR HandleFHSS()
 
   if (modresult == 0) // if it time to hop, do so.
   {
-    // DEBUG_PRINT("Hopping to next RF freq ");
+    // DEBUG_PRINT("[INFO] Hopping to next RF freq ");
     // DEBUG_PRINTLN(SX127xDriver::currFreq);
     Radio.SetFrequency(FHSSgetNextFreq());
   }
@@ -294,7 +294,7 @@ void ICACHE_RAM_ATTR HandleTLM()
 
     Radio.RXnb();
     WaitRXresponse = true;
-    DEBUG_PRINTLN("Setting RF to RXnb mode for TLM response");
+    // DEBUG_PRINTLN("[INFO] Setting RF to RXnb mode for TLM response");
   }
 }
 
@@ -341,7 +341,7 @@ void ICACHE_RAM_ATTR SendRCdataToRF()
     GenerateSyncPacketData();
     SyncPacketLastSent = millis();
     ChangeAirRateSentUpdate = true;
-    DEBUG_PRINT("Sent RF sync packet at ");
+    DEBUG_PRINT("[INFO] Sent RF sync packet at ");
     DEBUG_PRINTLN(Radio.currFreq);
   }
   else
@@ -366,6 +366,7 @@ void ICACHE_RAM_ATTR SendRCdataToRF()
   digitalWrite(GPIO_PIN_RFswitch_CONTROL, 0);
   digitalWrite(GPIO_PIN_RFamp_APC1, 1);
 #endif
+
   Radio.TXnb(Radio.TXdataBuffer, 8);
 
   if (ChangeAirRateRequested)
@@ -389,11 +390,11 @@ void ICACHE_RAM_ATTR HandleUpdateParameter()
   switch (crsf.ParameterUpdateData[0])
   {
   case 0: // send all params
-    DEBUG_PRINTLN("LUA: Got request to send all params");
+    DEBUG_PRINTLN("[INFO] LUA: Got request to send all params");
     crsf.sendLUAresponse((ExpressLRS_currAirRate.enum_rate + 2), ExpressLRS_currAirRate.TLMinterval + 1, 7, 1);
     break;
   case 1:
-    DEBUG_PRINTLN("LUA: Got request to update RF link rate");
+    DEBUG_PRINTLN("[INFO] LUA: Got request to update RF link rate");
     // if (ExpressLRS_currAirRate.enum_rate != (expresslrs_RFrates_e)crsf.ParameterUpdateData[1])
     // {
     //   SetRFLinkRate(ExpressLRS_AirRateConfig[crsf.ParameterUpdateData[1]]);
@@ -414,43 +415,43 @@ void ICACHE_RAM_ATTR HandleUpdateParameter()
 
     break;
   case 3:
-    DEBUG_PRINTLN("LUA: Got request to update RF power");
+    DEBUG_PRINTLN("[INFO] LUA: Got request to update RF power");
     switch (crsf.ParameterUpdateData[1])
     {
     case 0:
       Radio.maxPWR = 0b1111;
       Radio.SetOutputPower(0b1111); // 500 mW
-      DEBUG_PRINTLN("Setpower 500 mW");
+      DEBUG_PRINTLN("[INFO] Setpower 500 mW");
       break;
 
     case 1:
       Radio.maxPWR = 0b1000;
       Radio.SetOutputPower(0b1000);
-      DEBUG_PRINTLN("Setpower 200 mW");
+      DEBUG_PRINTLN("[INFO] Setpower 200 mW");
       break;
 
     case 2:
       Radio.maxPWR = 0b1000;
       Radio.SetOutputPower(0b1000);
-      DEBUG_PRINTLN("Setpower 100 mW");
+      DEBUG_PRINTLN("[INFO] Setpower 100 mW");
       break;
 
     case 3:
       Radio.maxPWR = 0b0101;
       Radio.SetOutputPower(0b0101);
-      DEBUG_PRINTLN("Setpower 50 mW");
+      DEBUG_PRINTLN("[INFO] Setpower 50 mW");
       break;
 
     case 4:
       Radio.maxPWR = 0b0010;
       Radio.SetOutputPower(0b0010);
-      DEBUG_PRINTLN("Setpower 25 mW");
+      DEBUG_PRINTLN("[INFO] Setpower 25 mW");
       break;
 
     case 5:
       Radio.maxPWR = 0b0000;
       Radio.SetOutputPower(0b0000);
-      DEBUG_PRINTLN("Setpower Pit");
+      DEBUG_PRINTLN("[INFO] Setpower Pit");
       break;
 
     default:
@@ -483,19 +484,10 @@ void DetectOtherRadios()
 
 void setup()
 {
-#ifdef TARGET_EXPRESSLRS_PCB_TX_V3_LEGACY
-  pinMode(RC_SIGNAL_PULLDOWN, INPUT_PULLDOWN);
-  pinMode(GPIO_PIN_BUTTON, INPUT_PULLUP);
-#endif
-
+  // Setup debug serial ports first
 #ifdef PLATFORM_ESP32
-  Serial.begin(115200);
-  DEBUG_PRINTLN("Booting ESP32 TX...");
-
-  crsf.connected = &Radio.StartTimerTask;
-  crsf.disconnected = &Radio.StopTimerTask;
-  crsf.RecvParameterUpdate = &ParamUpdateReq;
-  Radio.TimerDoneCallback = &TimerExpired;
+  Serial.begin(400000);
+  DEBUG_PRINTLN("[INFO] Booting ESP32 TX...");
 #endif
 
 #ifdef TARGET_R9M_TX
@@ -503,15 +495,32 @@ void setup()
     HardwareSerial(USART2);
     Serial.setTx(GPIO_PIN_DEBUG_TX);
     Serial.setRx(GPIO_PIN_DEBUG_RX);
+    Serial.begin(115200);
+    DEBUG_PRINTLN("[INFO] Using USART2 for debug");
   #else
     HardwareSerial(USART1);
     Serial.setTx(PA9);
     Serial.setRx(PA10);
+    Serial.begin(250000);
+    DEBUG_PRINTLN("[INFO] Using USART1 for debug");
   #endif
+  DEBUG_PRINTLN("[INFO] Booting R9M TX...");
+#endif
 
-  Serial.begin(115200);
-  DEBUG_PRINTLN("Booting R9M TX...");
+#ifdef TARGET_EXPRESSLRS_PCB_TX_V3_LEGACY
+  pinMode(RC_SIGNAL_PULLDOWN, INPUT_PULLDOWN);
+  pinMode(GPIO_PIN_BUTTON, INPUT_PULLUP);
+  DEBUG_PRINTLN("[INFO] Using legacy pinModes");
+#endif
 
+#ifdef PLATFORM_ESP32
+  crsf.connected = &Radio.StartTimerTask;
+  crsf.disconnected = &Radio.StopTimerTask;
+  crsf.RecvParameterUpdate = &ParamUpdateReq;
+  Radio.TimerDoneCallback = &TimerExpired;
+#endif
+
+#ifdef TARGET_R9M_TX
   // Annoying startup beeps
   pinMode(GPIO_PIN_BUZZER, OUTPUT);
   const int beepFreq[] = {659, 659, 659, 523, 659, 783, 392};
@@ -534,6 +543,7 @@ void setup()
   digitalWrite(GPIO_PIN_RFamp_APC1, HIGH);
 
   R9DAC.init(GPIO_PIN_SDA, GPIO_PIN_SCL, 0b0001100); // used to control ADC which sets PA output
+  DEBUG_PRINTLN("[INFO] Setting RF output power to 50mW");
   R9DAC.setPower(R9_PWR_50mW);
 
   button.init(GPIO_PIN_BUTTON, true); // r9 tx appears to be active high
@@ -555,7 +565,7 @@ void setup()
   // This should be copied to common.h and is used to generate a unique hop sequence, DeviceAddr, and CRC.
   // UID[0..2] are OUI (organisationally unique identifier) and are not ESP32 unique.  Do not use!
   DEBUG_PRINTLN("");
-  DEBUG_PRINTLN("Copy the below line into common.h.");
+  DEBUG_PRINTLN("[INFO] Copy the below line into common.h.");
   DEBUG_PRINT("uint8_t UID[6] = {");
   DEBUG_PRINT(baseMac[0]);
   DEBUG_PRINT(", ");
@@ -576,12 +586,13 @@ void setup()
 
 #if defined Regulatory_Domain_AU_915 || defined Regulatory_Domain_EU_868
   #ifdef Regulatory_Domain_AU_915
-    DEBUG_PRINTLN("Setting 915MHz Mode");
+    DEBUG_PRINTLN("[INFO] Setting 915MHz Mode");
   #else
-    DEBUG_PRINTLN("Setting 868MHz Mode");
+    DEBUG_PRINTLN("[INFO] Setting 868MHz Mode");
   #endif
   Radio.RFmodule = RFMOD_SX1276; //define radio module here
 #ifdef TARGET_100mW_MODULE
+  DEBUG_PRINTLN("[INFO] Setting RF output power to 100mW");
   Radio.SetOutputPower(0b1111); // 20dbm = 100mW
 #else                           // Below output power settings are for 1W modules
   // Radio.SetOutputPower(0b0000); // 15dbm = 32mW
@@ -592,8 +603,9 @@ void setup()
                                 // Radio.SetOutputPower(0b1111); // 30dbm = 1000mW
 #endif
 #elif defined Regulatory_Domain_AU_433 || defined Regulatory_Domain_EU_433
-  DEBUG_PRINTLN("Setting 433MHz Mode");
+  DEBUG_PRINTLN("[INFO] Setting 433MHz Mode");
   Radio.RFmodule = RFMOD_SX1278; //define radio module here
+  DEBUG_PRINTLN("[INFO] Setting RF output power to 100mW");
   Radio.SetOutputPower(0b1111);
 #endif
 
@@ -607,6 +619,7 @@ void setup()
   //Radio.TXdoneCallback4 = &NULL;
 
 #ifndef One_Bit_Switches
+  DEBUG_PRINTLN("[INFO] Using 1-bit switches");
   crsf.RCdataCallback1 = &CheckChannels5to8Change;
 #endif
 
@@ -614,7 +627,7 @@ void setup()
   crsf.Begin();
 
   SetRFLinkRate(RF_RATE_200HZ);
-  DEBUG_PRINTLN("Setup complete - ExpressLRS TX Module Booted");
+  DEBUG_PRINTLN("[INFO] Setup complete - ExpressLRS TX Module Booted");
 }
 
 void loop()
@@ -629,7 +642,7 @@ void loop()
   {
     if (connectionState == connected)
     {
-      DEBUG_PRINT("No RF response from RX in ");
+      DEBUG_PRINT("[ERROR] No RF response from RX in ");
       DEBUG_PRINT(RX_CONNECTION_LOST_TIMEOUT);
       DEBUG_PRINTLN("ms");
     }
@@ -681,11 +694,11 @@ void updateRFConnectionState(connectionState_e newState)
       // Log the new connection state
       if (connectionState == connected)
       {
-        DEBUG_PRINTLN("RF connection established");
+        DEBUG_PRINTLN("[INFO] RF connection established");
       }
       else
       {
-        DEBUG_PRINTLN("RF connection lost");
+        DEBUG_PRINTLN("[ERROR] RF connection lost");
       }
     }
 }
