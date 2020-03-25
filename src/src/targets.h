@@ -12,7 +12,7 @@
 /// General Features ///
 #define FEATURE_OPENTX_SYNC //uncomment to use OpenTX packet sync feature (requires OpenTX 2.4 onwards) - this reduces latency.
 #define LED_MAX_BRIGHTNESS 50 //0..255 for max led brightness
-//#define USE_USART2_FOR_DEBUG // Uncomment to send serial msgs to USART2 on the R9M
+#define USE_USART2_FOR_DEBUG // Uncomment to send serial msgs to USART2 on the R9M
 /////////////////////////
 
 #ifdef TARGET_TTGO_LORA_V1_AS_TX

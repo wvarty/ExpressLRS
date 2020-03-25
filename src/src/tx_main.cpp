@@ -495,7 +495,7 @@ void setup()
     HardwareSerial(USART2);
     Serial.setTx(GPIO_PIN_DEBUG_TX);
     Serial.setRx(GPIO_PIN_DEBUG_RX);
-    Serial.begin(115200);
+    Serial.begin(400000);
     DEBUG_PRINTLN("[INFO] Using USART2 for debug");
   #else
     HardwareSerial(USART1);
