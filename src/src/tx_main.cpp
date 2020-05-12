@@ -75,6 +75,11 @@ bool ChangeAirRateSentUpdate = false;
 
 bool WaitRXresponse = false;
 
+bool InBindingMode = false;
+void EnterBindingMode();
+void ExitBindingMode();
+void SendUIDOverMSP();
+
 ///// Not used in this version /////////////////////////////////////////////////////////////////////////////////////////////////////////
 uint8_t TelemetryWaitBuffer[7] = {0};
 
@@ -279,6 +284,10 @@ uint8_t ICACHE_RAM_ATTR incRFLinkRate()
 
 void ICACHE_RAM_ATTR HandleFHSS()
 {
+  if (InBindingMode) {
+    return;
+  }
+
   uint8_t modresult = (Radio.NonceTX) % ExpressLRS_currAirRate->FHSShopInterval;
 
   if (modresult == 0) // if it time to hop, do so.
@@ -360,7 +369,9 @@ void ICACHE_RAM_ATTR SendRCdataToRF()
     {
       GenerateMSPData();
       MSPPacketLastSent = millis();
-      MSPPacketSendCount--;
+      if (!InBindingMode) {
+        MSPPacketSendCount--;
+      }
     }
     else
     {
@@ -416,11 +427,13 @@ void ICACHE_RAM_ATTR HandleUpdateParameter()
     //crsf.sendLUAresponse(0x01, (uint8_t)random(1, 5));
     if (crsf.ParameterUpdateData[1] == 0)
     {
-      /*uint8_t newRate =*/decRFLinkRate();
+      // /*uint8_t newRate =*/decRFLinkRate();
+      EnterBindingMode();
     }
     else if (crsf.ParameterUpdateData[1] == 1)
     {
-      /*uint8_t newRate =*/incRFLinkRate();
+      // /*uint8_t newRate =*/incRFLinkRate();
+      ExitBindingMode();
     }
     Serial.println(ExpressLRS_currAirRate->enum_rate);
     //crsf.sendLUAresponse((ExpressLRS_currAirRate->enum_rate + 2), ExpressLRS_currAirRate->TLMinterval + 1, 7, 1);
@@ -459,7 +472,10 @@ void ICACHE_RAM_ATTR HandleUpdateParameter()
 
 void DetectOtherRadios()
 {
-  Radio.SetFrequency(GetInitialFreq());
+  if (!InBindingMode) {
+    Radio.SetFrequency(GetInitialFreq());
+  }
+  
   //Radio.RXsingle();
 
   // if (Radio.RXsingle(RXdata, 7, 2 * (RF_RATE_50HZ.interval / 1000)) == ERR_NONE)
@@ -492,7 +508,7 @@ void setup()
   HardwareSerial(USART2);
   Serial.setTx(GPIO_PIN_DEBUG_TX);
   Serial.setRx(GPIO_PIN_DEBUG_RX);
-  Serial.begin(400000);
+  Serial.begin(115200);
 
   // Annoying startup beeps
 #ifndef JUST_BEEP_ONCE
@@ -760,4 +776,74 @@ void ProcessMSPPacket(mspPacket_t* packet)
     MSPPacket = *packet;
     MSPPacketSendCount = 6;
   }
+}
+
+void EnterBindingMode()
+{
+  // Start periodically sending the current UID as MSP packets
+  SendUIDOverMSP();
+  
+  // Set UID to special binding values
+  UID[0] = BindingUID[0];
+  UID[1] = BindingUID[1];
+  UID[2] = BindingUID[2];
+  UID[3] = BindingUID[3];
+  UID[4] = BindingUID[4];
+  UID[5] = BindingUID[5];
+
+  CRCCaesarCipher = UID[4];
+  DeviceAddr = UID[5] & 0b111111;
+
+  // Start attempting to bind
+  // Lock the RF rate and freq while binding
+  InBindingMode = true;
+  SetRFLinkRate(RATE_50HZ);
+  Radio.SetFrequency(FHSSfreqs[0]);
+
+  Serial.print("Entered binding mode at freq = ");
+  Serial.print(FHSSfreqs[0]);
+  Serial.print(" and rfmode = ");
+  Serial.print(ExpressLRS_currAirRate->rate);
+  Serial.println("Hz");
+}
+
+void ExitBindingMode()
+{
+  // Reset UID to defined values
+  uint8_t definedUID[6] = {MY_UID};
+  UID[0] = definedUID[0];
+  UID[1] = definedUID[1];
+  UID[2] = definedUID[2];
+  UID[3] = definedUID[3];
+  UID[4] = definedUID[4];
+  UID[5] = definedUID[5];
+
+  CRCCaesarCipher = UID[4];
+  DeviceAddr = UID[5] & 0b111111;
+
+  // Revert to original packet rate
+  // and go to initial freq
+  InBindingMode = false;
+  SetRFLinkRate(RATE_200HZ);
+  Radio.SetFrequency(GetInitialFreq());
+
+  Serial.print("Exit binding mode at freq = ");
+  Serial.print(FHSSfreqs[0]);
+  Serial.print(" and rfmode = ");
+  Serial.print(ExpressLRS_currAirRate->rate);
+  Serial.println("Hz");
+}
+
+void SendUIDOverMSP()
+{
+  MSPPacket.reset();
+
+  MSPPacket.makeCommand();
+  MSPPacket.function = MSP_BIND;
+  MSPPacket.addByte(UID[2]);
+  MSPPacket.addByte(UID[3]);
+  MSPPacket.addByte(UID[4]);
+  MSPPacket.addByte(UID[5]);
+
+  MSPPacketSendCount = 1;
 }

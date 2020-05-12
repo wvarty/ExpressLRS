@@ -42,6 +42,8 @@ int8_t ExpressLRS_prevPower = 0;
 connectionState_e connectionState = disconnected;
 connectionState_e connectionStatePrev = disconnected;
 
+uint8_t BindingUID[6] = {0, 1, 2, 3, 4, 5}; // Special binding UID values
+
 #ifndef MY_UID
 //uint8_t UID[6] = {48, 174, 164, 200, 100, 50};
 //uint8_t UID[6] = {180, 230, 45, 152, 126, 65}; //sandro unique ID

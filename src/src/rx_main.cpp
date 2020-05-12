@@ -23,6 +23,11 @@
 #include "STM32_hwTimer.h"
 #endif
 
+bool InBindingMode = false;
+
+void EnterBindingMode();
+void ExitBindingMode();
+
 //// CONSTANTS ////
 #define BUTTON_SAMPLE_INTERVAL 150
 #define WEB_UPDATE_PRESS_INTERVAL 2000 // hold button for 2 sec to enable webupdate mode
@@ -106,6 +111,10 @@ void ICACHE_RAM_ATTR getRFlinkInfo()
 
 void ICACHE_RAM_ATTR HandleFHSS()
 {
+    if (InBindingMode) {
+        return;
+    }
+    
     uint8_t modresult = (NonceRXlocal + 1) % ExpressLRS_currAirRate->FHSShopInterval;
     if (modresult != 0)
     {
@@ -189,7 +198,10 @@ void ICACHE_RAM_ATTR LostConnection()
     LPF_FreqError.init(0);
 
     digitalWrite(GPIO_PIN_LED, 0);        // turn off led
-    Radio.SetFrequency(GetInitialFreq()); // in conn lost state we always want to listen on freq index 0
+    if (!InBindingMode) {
+        Radio.SetFrequency(GetInitialFreq()); // in conn lost state we always want to listen on freq index 0
+    }
+    
     Serial.println("lost conn");
 
 #ifdef PLATFORM_STM32
@@ -259,7 +271,17 @@ void ICACHE_RAM_ATTR UnpackMSPData()
     packet.addByte(Radio.RXdataBuffer[4]);
     packet.addByte(Radio.RXdataBuffer[5]);
     packet.addByte(Radio.RXdataBuffer[6]);
-    crsf.sendMSPFrameToFC(&packet);
+
+    if (packet.function = 0x01) {
+        UID[2] = packet.readByte();
+        UID[3] = packet.readByte();
+        UID[4] = packet.readByte();
+        UID[5] = packet.readByte();
+        ExitBindingMode();
+    }
+    else {
+        crsf.sendMSPFrameToFC(&packet);
+    }
 }
 
 void ICACHE_RAM_ATTR ProcessRFPacket()
@@ -297,7 +319,7 @@ void ICACHE_RAM_ATTR ProcessRFPacket()
         #else
         UnpackChannelData_11bit();
         #endif
-        crsf.sendRCFrameToFC();
+        // crsf.sendRCFrameToFC();
         break;
 
     case MSP_DATA_PACKET:
@@ -404,9 +426,9 @@ void ICACHE_RAM_ATTR sampleButton()
     { //falling edge
         buttonLastPressed = millis();
         buttonDown = true;
-        Serial.println("Manual Start");
-        Radio.SetFrequency(GetInitialFreq());
-        Radio.RXnb();
+        // Serial.println("Manual Start");
+        // Radio.SetFrequency(GetInitialFreq());
+        // Radio.RXnb();
     }
 
     if (buttonValue == true && buttonPrevValue == false) //rising edge
@@ -416,10 +438,7 @@ void ICACHE_RAM_ATTR sampleButton()
 
     if ((millis() > buttonLastPressed + WEB_UPDATE_PRESS_INTERVAL) && buttonDown) // button held down
     {
-        if (!webUpdateMode)
-        {
-            beginWebsever();
-        }
+        EnterBindingMode();
     }
 
     if ((millis() > buttonLastPressed + BUTTON_RESET_INTERVAL) && buttonDown)
@@ -466,7 +485,7 @@ void setup()
 #ifdef PLATFORM_STM32
     pinMode(GPIO_PIN_LED_GREEN, OUTPUT);
 #endif
-    pinMode(GPIO_PIN_BUTTON, INPUT);
+    pinMode(GPIO_PIN_BUTTON, INPUT_PULLUP);
 
 #ifdef Regulatory_Domain_AU_915
     Serial.println("Setting 915MHz Mode");
@@ -485,7 +504,10 @@ void setup()
 #endif
 
     FHSSrandomiseFHSSsequence();
-    Radio.SetFrequency(GetInitialFreq());
+    if (!InBindingMode) {
+        Radio.SetFrequency(GetInitialFreq());
+    }
+    
 
     //Radio.SetSyncWord(0x122);
 
@@ -516,13 +538,17 @@ void loop()
     {
         if ((connectionState == disconnected) && !webUpdateMode)
         {
-            Radio.SetFrequency(GetInitialFreq());
+            if (!InBindingMode) {
+                Radio.SetFrequency(GetInitialFreq());
+            
+            
             SetRFLinkRate((expresslrs_RFrates_e)(scanIndex % RATE_25HZ)); //switch between 200hz, 100hz, 50hz, rates
             LQreset();
             digitalWrite(GPIO_PIN_LED, LED);
             LED = !LED;
             Serial.println(ExpressLRS_currAirRate->interval);
             scanIndex++;
+            }
         }
         RFmodeLastCycled = millis();
     }
@@ -534,7 +560,7 @@ void loop()
 
     if ((millis() > (SendLinkStatstoFCintervalLastSent + SEND_LINK_STATS_TO_FC_INTERVAL)) && connectionState != disconnected)
     {
-        crsf.sendLinkStatisticsToFC();
+        // crsf.sendLinkStatisticsToFC();
         SendLinkStatstoFCintervalLastSent = millis();
     }
 
@@ -567,4 +593,61 @@ void loop()
         }
     }
 #endif
+}
+
+void EnterBindingMode()
+{
+    // Set UID to special binding values
+    UID[0] = BindingUID[0];
+    UID[1] = BindingUID[1];
+    UID[2] = BindingUID[2];
+    UID[3] = BindingUID[3];
+    UID[4] = BindingUID[4];
+    UID[5] = BindingUID[5];
+
+    CRCCaesarCipher = UID[4];
+    DeviceAddr = UID[5] & 0b111111;
+
+    // Start attempting to bind
+    // Lock the RF rate and freq while binding
+    InBindingMode = true;
+    SetRFLinkRate(RATE_50HZ);
+    Radio.SetFrequency(FHSSfreqs[0]);
+
+    Serial.print("Entered binding mode at freq = ");
+    Serial.print(FHSSfreqs[0]);
+    Serial.print(" and rfmode = ");
+    Serial.print(ExpressLRS_currAirRate->rate);
+    Serial.println("Hz");
+}
+
+void ExitBindingMode()
+{
+  CRCCaesarCipher = UID[4];
+  DeviceAddr = UID[5] & 0b111111;
+
+  // Revert to original packet rate
+  // and go to initial freq
+  InBindingMode = false;
+  SetRFLinkRate(RATE_200HZ);
+  Radio.SetFrequency(GetInitialFreq());
+
+  Serial.print("Exit binding mode at freq = ");
+  Serial.print(FHSSfreqs[0]);
+  Serial.print(" and rfmode = ");
+  Serial.print(ExpressLRS_currAirRate->rate);
+  Serial.println("Hz");
+
+  Serial.print("New UID = ");
+  Serial.print(UID[0]);
+  Serial.print(", ");
+  Serial.print(UID[1]);
+  Serial.print(", ");
+  Serial.print(UID[2]);
+  Serial.print(", ");
+  Serial.print(UID[3]);
+  Serial.print(", ");
+  Serial.print(UID[4]);
+  Serial.print(", ");
+  Serial.println(UID[5]);
 }

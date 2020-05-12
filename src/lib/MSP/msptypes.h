@@ -9,6 +9,7 @@
 #define MSP_ELRS_RF_MODE    0x00
 #define MSP_ELRS_TX_PWR     0x01
 #define MSP_ELRS_TLM_RATE   0x02
+#define MSP_BIND            0x06;
 
 // CRSF encapsulated msp defines
 #define ENCAPSULATED_MSP_PAYLOAD_SIZE 4
