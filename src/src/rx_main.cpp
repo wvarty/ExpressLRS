@@ -31,7 +31,7 @@
 #define SEND_LINK_STATS_TO_FC_INTERVAL 100
 ///////////////////
 
-#define DEBUG_SUPPRESS // supresses debug messages on uart 
+//#define DEBUG_SUPPRESS // supresses debug messages on uart 
 
 hwTimer hwTimer;
 SX127xDriver Radio;
@@ -132,9 +132,11 @@ void ICACHE_RAM_ATTR HandleFHSS()
     linkQuality = getRFlinkQuality();
     if (connectionState != disconnected) // don't hop if we lost
     {
-        Radio.SetFrequency(FHSSgetNextFreq());
+        uint32_t nextFreq = FHSSgetNextFreq();
+        Radio.SetFrequency(nextFreq);
         Radio.RXnb();
         crsf.sendLinkStatisticsToFC();
+        Serial.printf("NF = %u\n", nextFreq);
     }
 }
 
@@ -172,6 +174,9 @@ void ICACHE_RAM_ATTR HandleSendTelemetryResponse()
 
     uint8_t crc = CalcCRC(Radio.TXdataBuffer, 7) + CRCCaesarCipher;
     Radio.TXdataBuffer[7] = crc;
+
+    Serial.printf("send TLM resp\n");
+
     Radio.TXnb(Radio.TXdataBuffer, 8);
     addPacketToLQ(); // Adds packet to LQ otherwise an artificial drop in LQ is seen due to sending TLM.
 }
@@ -206,6 +211,7 @@ void ICACHE_RAM_ATTR HandleFreqCorr(bool value)
 #endif
         }
     }
+    Serial.printf("FC = %d\n", FreqCorrection);
 }
 
 void ICACHE_RAM_ATTR HWtimerCallback()
@@ -231,6 +237,8 @@ void ICACHE_RAM_ATTR LostConnection()
     {
         return; // Already disconnected
     }
+
+    Serial.printf("LVP = %u, millis = %u\n", LastValidPacket, millis());
 
     connectionStatePrev = connectionState;
     connectionState = disconnected; //set lost connection
@@ -316,6 +324,8 @@ void ICACHE_RAM_ATTR UnpackMSPData()
 
 void ICACHE_RAM_ATTR ProcessRFPacket()
 {
+    Serial.printf("ProcessRFPacket: ");
+    
     uint8_t calculatedCRC = CalcCRC(Radio.RXdataBuffer, 7) + CRCCaesarCipher;
     uint8_t inCRC = Radio.RXdataBuffer[7];
     uint8_t type = Radio.RXdataBuffer[0] & 0b11;
@@ -341,9 +351,12 @@ void ICACHE_RAM_ATTR ProcessRFPacket()
     LastValidPacketMicros = micros();
     LastValidPacket = millis();
 
+    Serial.printf("LVPPM = %u, LMPM = %u, LVP = %u, ", LastValidPacketPrevMicros, LastValidPacketMicros, LastValidPacket);
+
     switch (type)
     {
     case RC_DATA_PACKET: //Standard RC Data Packet
+        Serial.printf("pkt = RC_DATA_PACKET, ");
         #if defined SEQ_SWITCHES
         UnpackChannelDataSeqSwitches(&Radio, &crsf);
         #elif defined HYBRID_SWITCHES_8
@@ -355,15 +368,17 @@ void ICACHE_RAM_ATTR ProcessRFPacket()
         break;
 
     case MSP_DATA_PACKET:
+        Serial.printf("pkt = MSP_DATA_PACKET, ");
         UnpackMSPData();
         break;
 
     case TLM_PACKET: //telemetry packet from master
-
+        Serial.printf("pkt = TLM_PACKET, ");
         // not implimented yet
         break;
 
     case SYNC_PACKET: //sync packet from master
+        Serial.printf("pkt = SYNC_PACKET, ");
         if (Radio.RXdataBuffer[4] == UID[3] && Radio.RXdataBuffer[5] == UID[4] && Radio.RXdataBuffer[6] == UID[5])
         {
             if (connectionState == disconnected)
@@ -396,6 +411,7 @@ void ICACHE_RAM_ATTR ProcessRFPacket()
         break;
 
     default: // code to be executed if n doesn't match any cases
+        Serial.printf("pkt = UNKNOWN, ");
         break;
     }
 
@@ -404,6 +420,8 @@ void ICACHE_RAM_ATTR ProcessRFPacket()
     
     HWtimerError = ((LastValidPacketMicros - hwTimer.LastCallbackMicrosTick) % ExpressLRS_currAirRate->interval);
     Offset = LPF_Offset.update(HWtimerError - (ExpressLRS_currAirRate->interval >> 1) + 50); //crude 'locking function' to lock hardware timer to transmitter, seems to work well enough
+
+    Serial.printf("HWTE = %d, OS = %d\n", HWtimerError, Offset);
 
     if (RXtimerState == tim_tentative || RXtimerState == tim_disconnected)
     {
@@ -477,7 +495,8 @@ void setup()
 
 #ifdef PLATFORM_ESP8266
     Serial.begin(420000);
-
+    WiFi.mode(WIFI_OFF);
+    WiFi.forceSleepBegin();
 #endif
     // Serial.begin(230400); // for linux debugging
 
