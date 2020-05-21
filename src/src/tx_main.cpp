@@ -486,7 +486,7 @@ void ICACHE_RAM_ATTR HandleUpdateParameter()
       Serial.println("Binding Requested!");
       crsf.sendLUAresponse((uint8_t)0xFF, (uint8_t)0x01, (uint8_t)0x00, (uint8_t)0x00);
 
-      // EnterBindingMode();
+      EnterBindingMode();
     }
     break;
 
@@ -818,16 +818,14 @@ void ProcessMSPPacket(mspPacket_t *packet)
 
 void EnterBindingMode()
 {
-  if (isRXconnected || InBindingMode) {
-      // Don't enter binding if:
-      // - we're already connected
-      // - we're already binding
+  if (InBindingMode) {
+      // Don't enter binding if we're already binding
       return;
   }
-  
+
   // Start periodically sending the current UID as MSP packets
   SendUIDOverMSP();
-  
+
   // Set UID to special binding values
   UID[0] = BindingUID[0];
   UID[1] = BindingUID[1];
