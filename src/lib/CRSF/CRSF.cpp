@@ -1,13 +1,14 @@
 #include <Arduino.h>
-#include "../../src/targets.h"
 #include "CRSF.h"
 #include "../../lib/FIFO/FIFO.h"
 #include "HardwareSerial.h"
 
+//#define DEBUG_CRSF_NO_OUTPUT // debug, don't send RC msgs over UART
+
 #ifdef PLATFORM_ESP32
 HardwareSerial SerialPort(1);
 HardwareSerial CRSF::Port = SerialPort;
-portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
+portMUX_TYPE FIFOmux = portMUX_INITIALIZER_UNLOCKED;
 TaskHandle_t xHandleOpenTXsync = NULL;
 TaskHandle_t xESP32uartTask = NULL;
 TaskHandle_t xESP32uartWDT = NULL;
@@ -55,9 +56,11 @@ uint32_t CRSF::BadPktsCount = 0;
 
 volatile uint8_t CRSF::SerialInPacketLen = 0;                     // length of the CRSF packet as measured
 volatile uint8_t CRSF::SerialInPacketPtr = 0;                     // index where we are reading/writing
-volatile uint8_t CRSF::SerialInBuffer[CRSF_MAX_PACKET_LEN] = {0}; // max 64 bytes for CRSF packet
+
 volatile uint16_t CRSF::ChannelDataIn[16] = {0};
 volatile uint16_t CRSF::ChannelDataInPrev[16] = {0};
+
+volatile inBuffer_U CRSF::inBuffer;
 
 // current and sent switch values, used for prioritising sequential switch transmission
 uint8_t CRSF::currentSwitches[N_SWITCHES] = {0};
@@ -163,12 +166,12 @@ void ICACHE_RAM_ATTR CRSF::sendLinkStatisticsToTX()
     if (CRSF::CRSFstate)
     {
 #ifdef PLATFORM_ESP32
-        xSemaphoreTake(mutexOutFIFO, portMAX_DELAY);
+        portENTER_CRITICAL(&FIFOmux);
 #endif
         SerialOutFIFO.push(LinkStatisticsFrameLength + 4); // length
         SerialOutFIFO.pushBytes(outBuffer, LinkStatisticsFrameLength + 4);
 #ifdef PLATFORM_ESP32
-        xSemaphoreGive(mutexOutFIFO);
+        portEXIT_CRITICAL(&FIFOmux);
 #endif
     }
 }
@@ -206,8 +209,14 @@ void ICACHE_RAM_ATTR sendSetVTXchannel(uint8_t band, uint8_t channel)
 
     if (CRSF::CRSFstate)
     {
+        #ifdef PLATFORM_ESP32
+        portENTER_CRITICAL(&FIFOmux);
+        #endif
         SerialOutFIFO.push(VTXcontrolFrameLength + 4); // length
         SerialOutFIFO.pushBytes(outBuffer, VTXcontrolFrameLength + 4);
+        #ifdef PLATFORM_ESP32
+        portEXIT_CRITICAL(&FIFOmux);
+        #endif
     }
 }
 
@@ -236,12 +245,12 @@ void ICACHE_RAM_ATTR CRSF::sendLUAresponse(uint8_t val1, uint8_t val2, uint8_t v
     if (CRSF::CRSFstate)
     {
 #ifdef PLATFORM_ESP32
-        xSemaphoreTake(mutexOutFIFO, portMAX_DELAY);
+        portENTER_CRITICAL(&FIFOmux);
 #endif
         SerialOutFIFO.push(LUArespLength + 4); // length
         SerialOutFIFO.pushBytes(outBuffer, LUArespLength + 4);
 #ifdef PLATFORM_ESP32
-        xSemaphoreGive(mutexOutFIFO);
+        portEXIT_CRITICAL(&FIFOmux);
 #endif
     }
 }
@@ -332,12 +341,12 @@ void ICACHE_RAM_ATTR CRSF::sendSyncPacketToTX(void *pvParameters) // in values i
                 if (CRSF::CRSFstate)
                 {
 #ifdef PLATFORM_ESP32
-                    xSemaphoreTake(mutexOutFIFO, portMAX_DELAY);
+                    portENTER_CRITICAL(&FIFOmux);
 #endif
                     SerialOutFIFO.push(OpenTXsyncFrameLength + 4); // length
                     SerialOutFIFO.pushBytes(outBuffer, OpenTXsyncFrameLength + 4);
 #ifdef PLATFORM_ESP32
-                    xSemaphoreGive(mutexOutFIFO);
+                    portEXIT_CRITICAL(&FIFOmux);
 #endif
                 }
                 OpenTXsyncLastSent = millis();
@@ -363,8 +372,9 @@ void ICACHE_RAM_ATTR CRSF::sendSyncPacketToTX(void *pvParameters) // in values i
             uint8_t crc = CalcCRC(&outBuffer[2], LinkStatisticsFrameLength + 1);
 
             outBuffer[LinkStatisticsFrameLength + 3] = crc;
-
+            #ifndef DEBUG_CRSF_NO_OUTPUT
             this->_dev->write(outBuffer, LinkStatisticsFrameLength + 4);
+            #endif
         }
 
         void ICACHE_RAM_ATTR CRSF::sendRCFrameToFC()
@@ -380,8 +390,9 @@ void ICACHE_RAM_ATTR CRSF::sendSyncPacketToTX(void *pvParameters) // in values i
             uint8_t crc = CalcCRC(&outBuffer[2], RCframeLength + 1);
 
             outBuffer[RCframeLength + 3] = crc;
-
+            #ifndef DEBUG_CRSF_NO_OUTPUT
             this->_dev->write(outBuffer, RCframeLength + 4);
+            #endif
         }
 
         void ICACHE_RAM_ATTR CRSF::sendMSPFrameToFC(mspPacket_t* packet)
@@ -439,9 +450,6 @@ void ICACHE_RAM_ATTR CRSF::sendSyncPacketToTX(void *pvParameters) // in values i
                             if (CRSFstate == true)
                             {
                                 Serial.println("CRSF UART Disconnected");
-#ifdef PLATFORM_ESP32
-                                vTaskDelete(xHandleOpenTXsync);
-#endif
                                 disconnected();
                                 CRSFstate = false;
                             }
@@ -496,10 +504,19 @@ void ICACHE_RAM_ATTR CRSF::sendSyncPacketToTX(void *pvParameters) // in values i
                 void ICACHE_RAM_ATTR CRSF::ESP32uartTask(void *pvParameters) //RTOS task to read and write CRSF packets to the serial port
                 {
                     CRSF::Port.begin(CRSF_OPENTX_FAST_BAUDRATE, SERIAL_8N1, CSFR_RXpin_Module, CSFR_TXpin_Module, false, 500);
-                    UARTcurrentBaud = UARTrequestedBaud;
-                    const TickType_t xDelay1 = 1 / portTICK_PERIOD_MS;
+                    UARTcurrentBaud = CRSF_OPENTX_FAST_BAUDRATE;
+                    // const TickType_t xDelay1 = 1 / portTICK_PERIOD_MS;
                     Serial.println("ESP32 CRSF UART LISTEN TASK STARTED");
                     CRSF::duplex_set_RX();
+
+                    while (CRSF::Port.available())
+                    {
+                        CRSF::Port.read(); // measure sure there is no garbage on the UART at the start
+                    }
+
+                    vTaskDelay(5); // wait for the first packet to arrive
+
+                    volatile uint8_t * SerialInBuffer = CRSF::inBuffer.asUint8_t;
 
                     for (;;)
                     {
@@ -507,66 +524,85 @@ void ICACHE_RAM_ATTR CRSF::sendSyncPacketToTX(void *pvParameters) // in values i
                         {
                             char inChar = CRSF::Port.read();
 
-                            if (SerialInPacketPtr > CRSF_MAX_PACKET_LEN - 1) // we reached the maximum allowable packet length, so start again because shit fucked up hey.
+                            if (CRSFframeActive == false)
                             {
-                                SerialInPacketPtr = 0;
-                            }
-
-                            if ((inChar == CRSF_ADDRESS_CRSF_TRANSMITTER || inChar == CRSF_SYNC_BYTE) && CRSFframeActive == false) // we got sync, reset write pointer
-                            {
-                                SerialInPacketPtr = 0;
-                                CRSFframeActive = true;
-                            }
-
-                            if (SerialInPacketPtr == 1 && CRSFframeActive == true) // we read the packet length and save it
-                            {
-                                SerialInPacketLen = inChar;
-                            }
-
-                            SerialInBuffer[SerialInPacketPtr] = inChar;
-                            SerialInPacketPtr++;
-
-                            if (SerialInPacketPtr == SerialInPacketLen + 2) // plus 2 because the packlen is referenced from the start of the 'type' flag, IE there are an extra 2 bytes.
-                            {
-                                char CalculatedCRC = CalcCRC((uint8_t *)SerialInBuffer + 2, SerialInPacketPtr - 3);
-
-                                if (CalculatedCRC == inChar)
+                                // stage 1 wait for sync byte //
+                                if (inChar == CRSF_ADDRESS_CRSF_TRANSMITTER || inChar == CRSF_SYNC_BYTE) // we got sync, reset write pointer
                                 {
-                                    GoodPktsCount++;
-                                    ESP32ProcessPacket();
+                                    SerialInPacketPtr = 0;
+                                    CRSFframeActive = true;
+                                    SerialInBuffer[SerialInPacketPtr] = inChar;
+                                    SerialInPacketPtr++;
+                                }
+                            }
+                            else // frame is active so we do the processing 
+                            {
+                                // first if things have gone wrong //
+                                if (SerialInPacketPtr > CRSF_MAX_PACKET_LEN - 1) // we reached the maximum allowable packet length, so start again because shit fucked up hey.
+                                {
                                     SerialInPacketPtr = 0;
                                     CRSFframeActive = false;
-                                    lastUARTpktTime = millis();
+                                    return;
+                                }
 
-                                    uint8_t peekVal = SerialOutFIFO.peek(); // check if we have data in the output FIFO that needs to be written
-                                    if (peekVal > 0)
+                                // special case where we save the expected pkt len to buffer //
+                                if (SerialInPacketPtr == 1)
+                                {
+                                    if (inChar <= CRSF_MAX_PACKET_LEN)
                                     {
-                                        if (SerialOutFIFO.size() >= peekVal)
-                                        {
-                                            CRSF::duplex_set_TX();
-                                            xSemaphoreTake(mutexOutFIFO, portMAX_DELAY); // stops other tasks from writing to the FIFO when we want to read it
-                                            uint8_t OutPktLen = SerialOutFIFO.pop();
-                                            uint8_t OutData[OutPktLen];
-                                            SerialOutFIFO.popBytes(OutData, OutPktLen);
-                                            CRSF::Port.write(OutData, OutPktLen); // write the packet out
-                                            xSemaphoreGive(mutexOutFIFO);
-                                            CRSF::Port.flush(); // flush makes sure all bytes are pushed.
-                                            CRSF::duplex_set_RX();
-                                            vTaskDelay(2); // we don't expect anything for while so feel free to delay 
-                                        }
+                                        SerialInPacketLen = inChar;
+                                    }
+                                    else
+                                    {
+                                        SerialInPacketPtr = 0;
+                                        CRSFframeActive = false;
+                                        return;
                                     }
                                 }
-                                else
+
+                                SerialInBuffer[SerialInPacketPtr] = inChar;
+                                SerialInPacketPtr++;
+
+                                if ((SerialInPacketPtr == SerialInPacketLen + 2)) // plus 2 because the packlen is referenced from the start of the 'type' flag, IE there are an extra 2 bytes.
                                 {
-                                    BadPktsCount++;
-                                    Serial.println("UART CRC failure");
-                                    CRSFframeActive = false;
-                                    SerialInPacketPtr = 0;
-                                    FlushSerial();
-                                    vTaskDelay(3);
+                                    char CalculatedCRC = CalcCRC((uint8_t *)SerialInBuffer + 2, SerialInPacketPtr - 3);
+
+                                    if (CalculatedCRC == inChar)
+                                    {
+                                        GoodPktsCount++;
+                                        ESP32ProcessPacket();
+                                        CRSFframeActive = false;
+                                        lastUARTpktTime = millis();
+                                        SerialInPacketPtr = 0;
+
+                                        uint8_t peekVal = SerialOutFIFO.peek(); // check if we have data in the output FIFO that needs to be written
+                                        if (peekVal > 0)
+                                        {
+                                            if (SerialOutFIFO.size() >= peekVal)
+                                            {
+                                                CRSF::duplex_set_TX();
+                                                portENTER_CRITICAL(&FIFOmux); // stops other tasks from writing to the FIFO when we want to read it
+                                                uint8_t OutPktLen = SerialOutFIFO.pop();
+                                                uint8_t OutData[OutPktLen];
+                                                SerialOutFIFO.popBytes(OutData, OutPktLen);
+                                                portEXIT_CRITICAL(&FIFOmux);
+                                                CRSF::Port.write(OutData, OutPktLen); // write the packet out
+                                                CRSF::Port.flush(); // flush makes sure all bytes are pushed.
+                                                CRSF::duplex_set_RX();
+                                                vTaskDelay(1); // we don't expect anything for while so feel free to delay
+                                            }
+                                        }
+                                    }
+                                    else
+                                    {
+                                        BadPktsCount++;
+                                        Serial.println("UART CRC failure");
+                                        CRSFframeActive = false;
+                                        SerialInPacketPtr = 0;
+                                    }
+                                    memset((void *)SerialInBuffer, 0, sizeof(SerialInBuffer)); // either crc was good or not, either way zero the buffer
                                 }
                             }
-                            taskYIELD();
                         }
                         else
                         {
@@ -580,7 +616,7 @@ void ICACHE_RAM_ATTR CRSF::sendSyncPacketToTX(void *pvParameters) // in values i
                                     UARTcurrentBaud = UARTrequestedBaud;
                                     CRSF::duplex_set_RX();
                                 }
-                                vTaskDelay(3); //delay when crsf state is not connected, this will prevent WDT triggering
+                                vTaskDelay(1); //delay when crsf state is not connected, this will prevent WDT triggering
                             }
                         }
                     }
@@ -600,18 +636,22 @@ void ICACHE_RAM_ATTR CRSF::sendSyncPacketToTX(void *pvParameters) // in values i
 #endif
                         connected();
                     }
-                    if (CRSF::SerialInBuffer[2] == CRSF_FRAMETYPE_PARAMETER_WRITE)
+
+                    const uint8_t packetType = CRSF::inBuffer.asRCPacket_t.header.type;
+
+                    if (packetType == CRSF_FRAMETYPE_PARAMETER_WRITE)
                     {
-                        Serial.println("Got Other Packet");
-                        if (SerialInBuffer[3] == CRSF_ADDRESS_CRSF_TRANSMITTER && SerialInBuffer[4] == CRSF_ADDRESS_RADIO_TRANSMITTER)
+                        Serial.println("Got Other Packet"); // TODO use debug macro?
+                        const volatile uint8_t *buffer = CRSF::inBuffer.asUint8_t;
+                        if (buffer[3] == CRSF_ADDRESS_CRSF_TRANSMITTER && buffer[4] == CRSF_ADDRESS_RADIO_TRANSMITTER)
                         {
-                            ParameterUpdateData[0] = SerialInBuffer[5];
-                            ParameterUpdateData[1] = SerialInBuffer[6];
+                            ParameterUpdateData[0] = buffer[5];
+                            ParameterUpdateData[1] = buffer[6];
                             RecvParameterUpdate();
                         }
                     }
 
-                    if (CRSF::SerialInBuffer[2] == CRSF_FRAMETYPE_RC_CHANNELS_PACKED)
+                    if (packetType == CRSF_FRAMETYPE_RC_CHANNELS_PACKED)
                     {
                         CRSF::RCdataLastRecv = micros();
                         GetChannelDataIn();
@@ -640,6 +680,8 @@ void ICACHE_RAM_ATTR CRSF::sendSyncPacketToTX(void *pvParameters) // in values i
 
                 void ICACHE_RAM_ATTR CRSF::STM32handleUARTin() //RTOS task to read and write CRSF packets to the serial port
                 {
+                    volatile uint8_t * SerialInBuffer = CRSF::inBuffer.asUint8_t;
+
                     if (UARTrequestedBaud != UARTcurrentBaud)
                     {
                         CRSF::Port.begin(UARTrequestedBaud);
@@ -735,9 +777,13 @@ void ICACHE_RAM_ATTR CRSF::sendSyncPacketToTX(void *pvParameters) // in values i
                         Serial.println("CRSF UART Connected");
                         connected();
                     }
-                    if (CRSF::SerialInBuffer[2] == CRSF_FRAMETYPE_PARAMETER_WRITE)
+
+                    const uint8_t packetType = CRSF::inBuffer.asRCPacket_t.header.type;
+
+                    if (packetType == CRSF_FRAMETYPE_PARAMETER_WRITE)
                     {
                         Serial.println("Got Other Packet");
+                        const volatile uint8_t * SerialInBuffer = CRSF::inBuffer.asUint8_t;
                         if (SerialInBuffer[3] == CRSF_ADDRESS_CRSF_TRANSMITTER && SerialInBuffer[4] == CRSF_ADDRESS_RADIO_TRANSMITTER)
                         {
                             ParameterUpdateData[0] = SerialInBuffer[5];
@@ -747,7 +793,7 @@ void ICACHE_RAM_ATTR CRSF::sendSyncPacketToTX(void *pvParameters) // in values i
                         }
                     }
 
-                    if (CRSF::SerialInBuffer[2] == CRSF_FRAMETYPE_RC_CHANNELS_PACKED)
+                    if (packetType == CRSF_FRAMETYPE_RC_CHANNELS_PACKED)
                     {
                         CRSF::RCdataLastRecv = micros();
                         GetChannelDataIn();
@@ -777,32 +823,32 @@ void ICACHE_RAM_ATTR CRSF::updateSwitchValues()
     }
 }
 
-    void ICACHE_RAM_ATTR CRSF::GetChannelDataIn() // data is packed as 11 bits per channel
-    {
+void ICACHE_RAM_ATTR CRSF::GetChannelDataIn() // data is packed as 11 bits per channel
+{
 #define SERIAL_PACKET_OFFSET 3
 
-        memcpy((uint16_t *)ChannelDataInPrev, (uint16_t *)ChannelDataIn, 16); //before we write the new RC channel data copy the old data
+    memcpy((uint16_t *)ChannelDataInPrev, (uint16_t *)ChannelDataIn, 16); //before we write the new RC channel data copy the old data
 
-            const crsf_channels_t *const rcChannels = (crsf_channels_t *)&CRSF::SerialInBuffer[SERIAL_PACKET_OFFSET];
-            ChannelDataIn[0] = (rcChannels->ch0);
-            ChannelDataIn[1] = (rcChannels->ch1);
-            ChannelDataIn[2] = (rcChannels->ch2);
-            ChannelDataIn[3] = (rcChannels->ch3);
-            ChannelDataIn[4] = (rcChannels->ch4);
-            ChannelDataIn[5] = (rcChannels->ch5);
-            ChannelDataIn[6] = (rcChannels->ch6);
-            ChannelDataIn[7] = (rcChannels->ch7);
-            ChannelDataIn[8] = (rcChannels->ch8);
-            ChannelDataIn[9] = (rcChannels->ch9);
-            ChannelDataIn[10] = (rcChannels->ch10);
-            ChannelDataIn[11] = (rcChannels->ch11);
-            ChannelDataIn[12] = (rcChannels->ch12);
-            ChannelDataIn[13] = (rcChannels->ch13);
-            ChannelDataIn[14] = (rcChannels->ch14);
-            ChannelDataIn[15] = (rcChannels->ch15);
+    const volatile crsf_channels_t * rcChannels = &CRSF::inBuffer.asRCPacket_t.channels;
+    ChannelDataIn[0] = (rcChannels->ch0);
+    ChannelDataIn[1] = (rcChannels->ch1);
+    ChannelDataIn[2] = (rcChannels->ch2);
+    ChannelDataIn[3] = (rcChannels->ch3);
+    ChannelDataIn[4] = (rcChannels->ch4);
+    ChannelDataIn[5] = (rcChannels->ch5);
+    ChannelDataIn[6] = (rcChannels->ch6);
+    ChannelDataIn[7] = (rcChannels->ch7);
+    ChannelDataIn[8] = (rcChannels->ch8);
+    ChannelDataIn[9] = (rcChannels->ch9);
+    ChannelDataIn[10] = (rcChannels->ch10);
+    ChannelDataIn[11] = (rcChannels->ch11);
+    ChannelDataIn[12] = (rcChannels->ch12);
+    ChannelDataIn[13] = (rcChannels->ch13);
+    ChannelDataIn[14] = (rcChannels->ch14);
+    ChannelDataIn[15] = (rcChannels->ch15);
 
-            updateSwitchValues();
-        }
+    updateSwitchValues();
+}
 
     void ICACHE_RAM_ATTR CRSF::FlushSerial()
     {
