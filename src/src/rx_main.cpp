@@ -12,6 +12,8 @@
 #include "OTA.h"
 #include "msp.h"
 #include "msptypes.h"
+#include "elrs_eeprom.h"
+#include "elrs_eeprom_schema.h"
 
 #ifdef PLATFORM_ESP8266
 #include "ESP8266_WebUpdate.h"
@@ -39,6 +41,7 @@ void ExitBindingMode();
 hwTimer hwTimer;
 SX127xDriver Radio;
 CRSF crsf(Serial); //pass a serial port object to the class for it to use
+ELRS_EEPROM eeprom;
 
 /// Filters ////////////////
 LPF LPF_PacketInterval(3);
@@ -272,12 +275,8 @@ void ICACHE_RAM_ATTR UnpackMSPData()
     packet.addByte(Radio.RXdataBuffer[5]);
     packet.addByte(Radio.RXdataBuffer[6]);
 
-    if (packet.function = 0x01) {
-        UID[2] = packet.readByte();
-        UID[3] = packet.readByte();
-        UID[4] = packet.readByte();
-        UID[5] = packet.readByte();
-        ExitBindingMode();
+    if (packet.function == MSP_ELRS_BIND) {
+        OnELRSBindMSP(&packet);
     }
     else {
         crsf.sendMSPFrameToFC(&packet);
@@ -530,6 +529,21 @@ void setup()
 
     SetRFLinkRate(RATE_200HZ);
     hwTimer.init();
+
+    // Read out the byte that indicates if RX has been bound
+    uint8_t bindingState = eeprom.ReadByte(EEPROM_INDEX_BINDING);
+
+    // If the byte matches the reserved value
+    if (bindingState == EEPROM_IS_BOUND) {
+        // RX has been bound previously, read the UID from eeprom
+        for (uint8_t i = 0; i < 6; ++i) {
+            UID[i] = eeprom.ReadByte(EEPROM_INDEX_UID + i);
+        }
+    }
+    else {
+        // RX has not been bound, enter binding mode
+        EnterBindingMode();
+    }
 }
 
 void loop()
@@ -597,6 +611,15 @@ void loop()
 
 void EnterBindingMode()
 {
+    if ((connectionState == connected) || InBindingMode || webUpdateMode) {
+        // Don't enter binding if:
+        // - we're already connected
+        // - we're already binding
+        // - we're in web update mode
+        Serial.println("Cannot enter binding mode!");
+        return;
+    }
+    
     // Set UID to special binding values
     UID[0] = BindingUID[0];
     UID[1] = BindingUID[1];
@@ -623,31 +646,53 @@ void EnterBindingMode()
 
 void ExitBindingMode()
 {
-  CRCCaesarCipher = UID[4];
-  DeviceAddr = UID[5] & 0b111111;
+    if (!InBindingMode) {
+        // Not in binding mode
+        return;
+    }
 
-  // Revert to original packet rate
-  // and go to initial freq
-  InBindingMode = false;
-  SetRFLinkRate(RATE_200HZ);
-  Radio.SetFrequency(GetInitialFreq());
+    // Set eeprom byte to indicate RX is bound
+    eeprom.WriteByte(EEPROM_INDEX_BINDING, EEPROM_IS_BOUND);
 
-  Serial.print("Exit binding mode at freq = ");
-  Serial.print(FHSSfreqs[0]);
-  Serial.print(" and rfmode = ");
-  Serial.print(ExpressLRS_currAirRate->rate);
-  Serial.println("Hz");
+    InBindingMode = false;
 
-  Serial.print("New UID = ");
-  Serial.print(UID[0]);
-  Serial.print(", ");
-  Serial.print(UID[1]);
-  Serial.print(", ");
-  Serial.print(UID[2]);
-  Serial.print(", ");
-  Serial.print(UID[3]);
-  Serial.print(", ");
-  Serial.print(UID[4]);
-  Serial.print(", ");
-  Serial.println(UID[5]);
+    // Revert to original packet rate
+    // and go to initial freq
+    SetRFLinkRate(RATE_200HZ);
+    Radio.SetFrequency(GetInitialFreq());
+
+    Serial.print("Exit binding mode at freq = ");
+    Serial.print(FHSSfreqs[0]);
+    Serial.print(" and rfmode = ");
+    Serial.print(ExpressLRS_currAirRate->rate);
+    Serial.println("Hz");
+
+    Serial.print("New UID = ");
+    Serial.print(UID[0]);
+    Serial.print(", ");
+    Serial.print(UID[1]);
+    Serial.print(", ");
+    Serial.print(UID[2]);
+    Serial.print(", ");
+    Serial.print(UID[3]);
+    Serial.print(", ");
+    Serial.print(UID[4]);
+    Serial.print(", ");
+    Serial.println(UID[5]);
+}
+
+void OnELRSBindMSP(mspPacket_t *packet)
+{
+    UID[2] = packet->readByte();
+    UID[3] = packet->readByte();
+    UID[4] = packet->readByte();
+    UID[5] = packet->readByte();
+    CRCCaesarCipher = UID[4];
+    DeviceAddr = UID[5] & 0b111111;
+
+    ExitBindingMode();
+
+    for (uint8_t i = 2; i < 6; ++i) {
+        eeprom.WriteByte(EEPROM_INDEX_UID + (i - 2), UID[i]);
+    }
 }
