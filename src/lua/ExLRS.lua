@@ -183,10 +183,14 @@ local function refreshHorus()
 
     if selection.selected == 5 then
         if selection.state == true then
-            lcd.drawText(30, 110, 'Press [ENTER] to stop', MEDSIZE)
-			if (bindmode == 0) then
-				crossfireTelemetryPush(0x2D, {0xEE, 0xEA, 0xFF, 0x01})
-			end
+            lcd.drawText(30, 130, 'Press [ENTER] to stop', MEDSIZE)
+            if (bindmode == 0) then
+                crossfireTelemetryPush(0x2D, {0xEE, 0xEA, 0xFF, 0x01})
+            end
+        end
+        if (selection.state == false) and (bindmode == 1) then
+            crossfireTelemetryPush(0x2D, {0xEE, 0xEA, 0xFF, 0x00})
+            bindmode = 0;
         end
     end
 
@@ -213,9 +217,13 @@ local function refreshTaranis()
     if selection.selected == 5 then
         if selection.state == true then
             lcd.drawText(7, 53, 'Press [ENTER] to stop', MEDSIZE)
-			if (bindmode == 0) then
-				crossfireTelemetryPush(0x2D, {0xEE, 0xEA, 0xFF, 0x01})
-			end
+            if (bindmode == 0) then
+                crossfireTelemetryPush(0x2D, {0xEE, 0xEA, 0xFF, 0x01})
+            end
+        end
+        if (selection.state == false) and (bindmode == 1) then
+            crossfireTelemetryPush(0x2D, {0xEE, 0xEA, 0xFF, 0x00})
+            bindmode = 0;
         end
     end
 

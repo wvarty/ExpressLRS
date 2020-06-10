@@ -46,6 +46,12 @@
 # Uncomment to use UART2 for MSP comms on the TX module
 #-DUSE_UART2
 
+# Uncomment the line below to enable debug logging
+-DDEBUG
+
+# Uncomment the line below to suppress CRSF RC msgs over UART
+-DDEBUG_CRSF_NO_OUTPUT
+
 ### Set your UID here. Must be 6 bytes!
 
--DMY_UID=0xBA,0xBE,0xCA,0xFE,0xAC,0xDC
+-DMY_UID=0xAB,0xEB,0xCA,0xFE,0xAC,0xDC

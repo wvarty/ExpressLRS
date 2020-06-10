@@ -8,7 +8,7 @@
     #include <EEPROM.h>
 #endif
 
-#define RESERVED_EEPROM_SIZE    32
+#define RESERVED_EEPROM_SIZE    512
 
 class ELRS_EEPROM
 {

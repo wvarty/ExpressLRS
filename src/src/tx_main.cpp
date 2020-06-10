@@ -488,6 +488,14 @@ void ICACHE_RAM_ATTR HandleUpdateParameter()
 
       EnterBindingMode();
     }
+
+    if (crsf.ParameterUpdateData[1] == 0)
+    {
+      Serial.println("Binding Cancelled!");
+      crsf.sendLUAresponse((uint8_t)0xFF, (uint8_t)0x00, (uint8_t)0x00, (uint8_t)0x00);
+
+      ExitBindingMode();
+    }
     break;
 
   default:
@@ -538,7 +546,7 @@ void setup()
   HardwareSerial(USART2);
   Serial.setTx(GPIO_PIN_DEBUG_TX);
   Serial.setRx(GPIO_PIN_DEBUG_RX);
-  Serial.begin(115200);
+  Serial.begin(400000);
 
   // Annoying startup beeps
 #ifndef JUST_BEEP_ONCE
@@ -842,10 +850,12 @@ void EnterBindingMode()
   // Start attempting to bind
   // Lock the RF rate and freq while binding
   SetRFLinkRate(RATE_50HZ);
-  Radio.SetFrequency(FHSSfreqs[0]);
+  Radio.SetFrequency(GetInitialFreq());
+
+  isRXconnected = false;
 
   Serial.print("Entered binding mode at freq = ");
-  Serial.print(FHSSfreqs[0]);
+  Serial.print(Radio.currFreq);
   Serial.print(" and rfmode = ");
   Serial.print(ExpressLRS_currAirRate->rate);
   Serial.println("Hz");
@@ -881,7 +891,7 @@ void ExitBindingMode()
   crsf.sendLUAresponse((uint8_t)0xFF, (uint8_t)0x00, (uint8_t)0x00, (uint8_t)0x00); // send this to confirm binding is done
 
   Serial.print("Exit binding mode at freq = ");
-  Serial.print(FHSSfreqs[0]);
+  Serial.print(Radio.currFreq);
   Serial.print(" and rfmode = ");
   Serial.print(ExpressLRS_currAirRate->rate);
   Serial.println("Hz");

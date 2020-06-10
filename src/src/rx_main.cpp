@@ -6,7 +6,7 @@
 #include "LoRaRadioLib.h"
 #include "CRSF.h"
 #include "FHSS.h"
-// #include "Debug.h"
+#include "debug.h"
 #include "rx_LinkQuality.h"
 #include "errata.h"
 #include "OTA.h"
@@ -25,11 +25,6 @@
 #include "STM32_hwTimer.h"
 #endif
 
-bool InBindingMode = false;
-
-void EnterBindingMode();
-void ExitBindingMode();
-
 //// CONSTANTS ////
 #define BUTTON_SAMPLE_INTERVAL 150
 #define WEB_UPDATE_PRESS_INTERVAL 2000 // hold button for 2 sec to enable webupdate mode
@@ -37,8 +32,6 @@ void ExitBindingMode();
 #define WEB_UPDATE_LED_FLASH_INTERVAL 25
 #define SEND_LINK_STATS_TO_FC_INTERVAL 100
 ///////////////////
-
-#define DEBUG_SUPPRESS // supresses debug messages on uart 
 
 hwTimer hwTimer;
 SX127xDriver Radio;
@@ -95,6 +88,14 @@ uint32_t PacketInterval;
 uint32_t RFmodeLastCycled = 0;
 ///////////////////////////////////////
 
+bool InBindingMode = false;
+
+void EnterBindingMode();
+void ExitBindingMode();
+void OnELRSBindMSP(mspPacket_t *packet);
+
+//////////////////////////////////////////////////////////////
+
 void ICACHE_RAM_ATTR getRFlinkInfo()
 {
     int8_t LastRSSI = Radio.GetLastPacketRSSI();
@@ -113,7 +114,7 @@ void ICACHE_RAM_ATTR getRFlinkInfo()
     crsf.LinkStatistics.uplink_Link_quality = linkQuality;
     crsf.LinkStatistics.rf_Mode = 4 - ExpressLRS_currAirRate->enum_rate;
 
-    //Serial.println(crsf.LinkStatistics.uplink_RSSI_1);
+    //DEBUG_PRINTLN(crsf.LinkStatistics.uplink_RSSI_1);
 }
 
 void ICACHE_RAM_ATTR SetRFLinkRate(expresslrs_RFrates_e rate) // Set speed of RF link (hz)
@@ -198,9 +199,7 @@ void ICACHE_RAM_ATTR HandleFreqCorr(bool value)
         else
         {
             FreqCorrection = FreqCorrectionMax;
-#ifndef DEBUG_SUPPRESS
-            Serial.println("Max pos reasontable freq offset correction limit reached!");
-#endif
+            DEBUG_PRINTLN("Max pos reasontable freq offset correction limit reached!");
         }
     }
     else
@@ -212,9 +211,7 @@ void ICACHE_RAM_ATTR HandleFreqCorr(bool value)
         else
         {
             FreqCorrection = FreqCorrectionMin;
-#ifndef DEBUG_SUPPRESS
-            Serial.println("Max neg reasontable freq offset correction limit reached!");
-#endif
+            DEBUG_PRINTLN("Max neg reasontable freq offset correction limit reached!");
         }
     }
 }
@@ -252,7 +249,7 @@ void ICACHE_RAM_ATTR LostConnection()
         Radio.SetFrequency(GetInitialFreq()); // in conn lost state we always want to listen on freq index 0
     }
     
-    Serial.println("lost conn");
+    DEBUG_PRINTLN("lost conn");
 
 #ifdef PLATFORM_STM32
 
@@ -265,7 +262,7 @@ void ICACHE_RAM_ATTR TentativeConnection()
     connectionStatePrev = connectionState;
     connectionState = tentative;
     RXtimerState = tim_disconnected;
-    Serial.println("tentative conn");
+    DEBUG_PRINTLN("tentative conn");
     //LPF_Offset.Beta = 3;
 }
 
@@ -283,7 +280,7 @@ void ICACHE_RAM_ATTR GotConnection()
 
     RFmodeLastCycled = millis();   // give another 3 sec for loc to occur.
     digitalWrite(GPIO_PIN_LED, 1); // turn on led
-    Serial.println("got conn");
+    DEBUG_PRINTLN("got conn");
 
 #ifdef PLATFORM_STM32
 
@@ -343,17 +340,13 @@ void ICACHE_RAM_ATTR ProcessRFPacket()
 
     if (inCRC != calculatedCRC)
     {
-        #ifndef DEBUG_SUPPRESS
-        Serial.println("CRC error on RF packet");
-        #endif
+        DEBUG_PRINTLN("CRC error on RF packet");
         return;
     }
 
     if (packetAddr != DeviceAddr)
     {
-        #ifndef DEBUG_SUPPRESS
-        Serial.println("Wrong device address on RF packet");
-        #endif
+        DEBUG_PRINTLN("Wrong device address on RF packet");
         return;
     }
 
@@ -458,7 +451,7 @@ void ICACHE_RAM_ATTR sampleButton()
     { //falling edge
         buttonLastPressed = millis();
         buttonDown = true;
-        // Serial.println("Manual Start");
+        // DEBUG_PRINTLN("Manual Start");
         // Radio.SetFrequency(GetInitialFreq());
         // Radio.RXnb();
     }
@@ -499,7 +492,7 @@ void setup()
 #endif
     // Serial.begin(230400); // for linux debugging
 
-    Serial.println("Module Booting...");
+    DEBUG_PRINTLN("Module Booting...");
     pinMode(GPIO_PIN_LED, OUTPUT);
 
 #ifdef PLATFORM_STM32
@@ -508,22 +501,20 @@ void setup()
     pinMode(GPIO_PIN_BUTTON, INPUT_PULLUP);
 
 #ifdef Regulatory_Domain_AU_915
-    Serial.println("Setting 915MHz Mode");
+    DEBUG_PRINTLN("Setting 915MHz Mode");
     Radio.RFmodule = RFMOD_SX1276; //define radio module here
 #elif defined Regulatory_Domain_FCC_915
-    Serial.println("Setting 915MHz Mode");
+    DEBUG_PRINTLN("Setting 915MHz Mode");
     Radio.RFmodule = RFMOD_SX1276; //define radio module here
 #elif defined Regulatory_Domain_EU_868
-    Serial.println("Setting 868MHz Mode");
+    DEBUG_PRINTLN("Setting 868MHz Mode");
     Radio.RFmodule = RFMOD_SX1276; //define radio module here
 #elif defined Regulatory_Domain_AU_433 || defined Regulatory_Domain_EU_433
-    Serial.println("Setting 433MHz Mode");
+    DEBUG_PRINTLN("Setting 433MHz Mode");
     Radio.RFmodule = RFMOD_SX1278; //define radio module here
 #else
 #error No regulatory domain defined, please define one in common.h
 #endif
-
-    FHSSrandomiseFHSSsequence();
 
     //Radio.SetSyncWord(0x122);
 
@@ -533,9 +524,9 @@ void setup()
     Radio.SetOutputPower(0b1111); //default is max power (17dBm for RX)
 
     RFnoiseFloor = MeasureNoiseFloor();
-    Serial.print("RF noise floor: ");
-    Serial.print(RFnoiseFloor);
-    Serial.println("dBm");
+    DEBUG_PRINT("RF noise floor: ");
+    DEBUG_PRINT(RFnoiseFloor);
+    DEBUG_PRINTLN("dBm");
 
     Radio.RXdoneCallback1 = &ProcessRFPacket;
     Radio.TXdoneCallback1 = &Radio.RXnb;
@@ -546,20 +537,50 @@ void setup()
     SetRFLinkRate(RATE_200HZ);
     hwTimer.init();
 
+    eeprom.Begin();
+
+    DEBUG_PRINT("UID = ");
+        DEBUG_PRINT(UID[0]);
+        DEBUG_PRINT(", ");
+        DEBUG_PRINT(UID[1]);
+        DEBUG_PRINT(", ");
+        DEBUG_PRINT(UID[2]);
+        DEBUG_PRINT(", ");
+        DEBUG_PRINT(UID[3]);
+        DEBUG_PRINT(", ");
+        DEBUG_PRINT(UID[4]);
+        DEBUG_PRINT(", ");
+        DEBUG_PRINTLN(UID[5]);
+
     // Read out the byte that indicates if RX has been bound
     uint8_t bindingState = eeprom.ReadByte(EEPROM_INDEX_BINDING);
 
     // If the byte matches the reserved value
     if (bindingState == EEPROM_IS_BOUND) {
-        // RX has been bound previously, read the UID from eeprom
-        for (uint8_t i = 0; i < 6; ++i) {
-            UID[i] = eeprom.ReadByte(EEPROM_INDEX_UID + i);
+        DEBUG_PRINTLN("RX has been bound previously, reading the UID from eeprom...");
+        for (uint8_t i = 2; i < 6; ++i) {
+            UID[i] = eeprom.ReadByte(EEPROM_INDEX_UID + (i - 2));
         }
+
+        DEBUG_PRINT("UID = ");
+        DEBUG_PRINT(UID[0]);
+        DEBUG_PRINT(", ");
+        DEBUG_PRINT(UID[1]);
+        DEBUG_PRINT(", ");
+        DEBUG_PRINT(UID[2]);
+        DEBUG_PRINT(", ");
+        DEBUG_PRINT(UID[3]);
+        DEBUG_PRINT(", ");
+        DEBUG_PRINT(UID[4]);
+        DEBUG_PRINT(", ");
+        DEBUG_PRINTLN(UID[5]);
     }
     else {
-        // RX has not been bound, enter binding mode
+        DEBUG_PRINTLN("RX has not been bound, enter binding mode...");
         EnterBindingMode();
     }
+
+    FHSSrandomiseFHSSsequence();
 }
 
 void loop()
@@ -567,18 +588,20 @@ void loop()
     if (millis() > (RFmodeLastCycled + ExpressLRS_currAirRate->RFmodeCycleInterval + ((connectionState == tentative) ? ExpressLRS_currAirRate->RFmodeCycleAddtionalTime : 0))) // connection = tentative we add alittle delay
     {
         if ((connectionState == disconnected) && !webUpdateMode)
-        {
-            if (!InBindingMode) {
+        {   
+            if (InBindingMode) {
+                SetRFLinkRate(RATE_50HZ);
+            }
+            else {
                 Radio.SetFrequency(GetInitialFreq());
+                SetRFLinkRate((expresslrs_RFrates_e)(scanIndex % RATE_25HZ)); //switch between 200hz, 100hz, 50hz, rates
+            }
             
-            
-            SetRFLinkRate((expresslrs_RFrates_e)(scanIndex % RATE_25HZ)); //switch between 200hz, 100hz, 50hz, rates
             LQreset();
             digitalWrite(GPIO_PIN_LED, LED);
             LED = !LED;
-            Serial.println(ExpressLRS_currAirRate->interval);
+            DEBUG_PRINTLN(ExpressLRS_currAirRate->interval);
             scanIndex++;
-            }
         }
         RFmodeLastCycled = millis();
     }
@@ -603,13 +626,11 @@ void loop()
     if ((RXtimerState == tim_tentative) && (millis() > (GotConnectionMillis + ConsiderConnGoodMillis)))
     {
         RXtimerState = tim_locked;
-        #ifndef DEBUG_SUPPRESS
-        Serial.println("Timer Considered Locked");
-        #endif
+        DEBUG_PRINTLN("Timer Considered Locked");
     }
 
 #ifdef Auto_WiFi_On_Boot
-    if ((connectionState == disconnected) && !webUpdateMode && millis() > 10000 && millis() < 11000)
+    if ((connectionState == disconnected) && !webUpdateMode && millis() > 20000 && millis() < 21000)
     {
         beginWebsever();
     }
@@ -640,7 +661,7 @@ void EnterBindingMode()
         // - we're already connected
         // - we're already binding
         // - we're in web update mode
-        Serial.println("Cannot enter binding mode!");
+        DEBUG_PRINTLN("Cannot enter binding mode!");
         return;
     }
     
@@ -657,26 +678,25 @@ void EnterBindingMode()
 
     // Start attempting to bind
     // Lock the RF rate and freq while binding
-    InBindingMode = true;
     SetRFLinkRate(RATE_50HZ);
-    Radio.SetFrequency(FHSSfreqs[0]);
+    Radio.SetFrequency(GetInitialFreq());
 
-    Serial.print("Entered binding mode at freq = ");
-    Serial.print(FHSSfreqs[0]);
-    Serial.print(" and rfmode = ");
-    Serial.print(ExpressLRS_currAirRate->rate);
-    Serial.println("Hz");
+    InBindingMode = true;
+
+    DEBUG_PRINT("Entered binding mode at freq = ");
+    DEBUG_PRINT(Radio.currFreq);
+    DEBUG_PRINT(" and rfmode = ");
+    DEBUG_PRINT(ExpressLRS_currAirRate->rate);
+    DEBUG_PRINTLN("Hz");
 }
 
 void ExitBindingMode()
 {
     if (!InBindingMode) {
         // Not in binding mode
+        DEBUG_PRINTLN("Cannot exit binding mode!");
         return;
     }
-
-    // Set eeprom byte to indicate RX is bound
-    eeprom.WriteByte(EEPROM_INDEX_BINDING, EEPROM_IS_BOUND);
 
     InBindingMode = false;
 
@@ -685,24 +705,11 @@ void ExitBindingMode()
     SetRFLinkRate(RATE_200HZ);
     Radio.SetFrequency(GetInitialFreq());
 
-    Serial.print("Exit binding mode at freq = ");
-    Serial.print(FHSSfreqs[0]);
-    Serial.print(" and rfmode = ");
-    Serial.print(ExpressLRS_currAirRate->rate);
-    Serial.println("Hz");
-
-    Serial.print("New UID = ");
-    Serial.print(UID[0]);
-    Serial.print(", ");
-    Serial.print(UID[1]);
-    Serial.print(", ");
-    Serial.print(UID[2]);
-    Serial.print(", ");
-    Serial.print(UID[3]);
-    Serial.print(", ");
-    Serial.print(UID[4]);
-    Serial.print(", ");
-    Serial.println(UID[5]);
+    DEBUG_PRINT("Exit binding mode at freq = ");
+    DEBUG_PRINT(Radio.currFreq);
+    DEBUG_PRINT(" and rfmode = ");
+    DEBUG_PRINT(ExpressLRS_currAirRate->rate);
+    DEBUG_PRINTLN("Hz");
 }
 
 void OnELRSBindMSP(mspPacket_t *packet)
@@ -714,9 +721,26 @@ void OnELRSBindMSP(mspPacket_t *packet)
     CRCCaesarCipher = UID[4];
     DeviceAddr = UID[5] & 0b111111;
 
-    ExitBindingMode();
+    DEBUG_PRINT("New UID = ");
+    DEBUG_PRINT(UID[0]);
+    DEBUG_PRINT(", ");
+    DEBUG_PRINT(UID[1]);
+    DEBUG_PRINT(", ");
+    DEBUG_PRINT(UID[2]);
+    DEBUG_PRINT(", ");
+    DEBUG_PRINT(UID[3]);
+    DEBUG_PRINT(", ");
+    DEBUG_PRINT(UID[4]);
+    DEBUG_PRINT(", ");
+    DEBUG_PRINTLN(UID[5]);
 
     for (uint8_t i = 2; i < 6; ++i) {
         eeprom.WriteByte(EEPROM_INDEX_UID + (i - 2), UID[i]);
     }
+
+    // Set eeprom byte to indicate RX is bound
+    eeprom.WriteByte(EEPROM_INDEX_BINDING, EEPROM_IS_BOUND);
+
+    FHSSrandomiseFHSSsequence();
+    ExitBindingMode();
 }
